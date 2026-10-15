@@ -12,7 +12,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { createClient } from "./client";
 
-export interface CctUser {
+export interface CgUser {
   id: string;
   email?: string;
 }
@@ -28,7 +28,7 @@ export interface Profile {
   country: string | null;
 }
 
-export interface CctStats {
+export interface CgStats {
   xp: number;
   wins: number;
   losses: number;
@@ -40,9 +40,9 @@ export interface CctStats {
 }
 
 interface AuthCtx {
-  user: CctUser | null;
+  user: CgUser | null;
   profile: Profile | null;
-  cctStats: CctStats | null;
+  cgStats: CgStats | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithFacebook: () => Promise<void>;
@@ -67,13 +67,13 @@ export function displayName(
   return "Player";
 }
 
-/** Reads the `cct_stats` row; returns null when the table doesn't exist yet
+/** Reads the `cg_stats` row; returns null when the table doesn't exist yet
  *  (phase 1: no stats table) — never throws. */
-async function fetchCctStats(uid: string): Promise<CctStats | null> {
+async function fetchCgStats(uid: string): Promise<CgStats | null> {
   try {
     const supabase = createClient();
     const { data, error } = await supabase
-      .from("cct_stats")
+      .from("cg_stats")
       .select("*")
       .eq("user_id", uid)
       .maybeSingle();
@@ -94,9 +94,9 @@ async function fetchCctStats(uid: string): Promise<CctStats | null> {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<CctUser | null>(null);
+  const [user, setUser] = useState<CgUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [cctStats, setCctStats] = useState<CctStats | null>(null);
+  const [cgStats, setCgStats] = useState<CgStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async (uid: string) => {
@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq("id", uid)
         .single();
       if (data) setProfile(data as Profile);
-      setCctStats(await fetchCctStats(uid));
+      setCgStats(await fetchCgStats(uid));
     } catch {
       /* supabase not configured */
     }
@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (su) loadProfile(su.id);
             else {
               setProfile(null);
-              setCctStats(null);
+              setCgStats(null);
             }
           }
         );
@@ -205,7 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       profile,
-      cctStats,
+      cgStats,
       loading,
       signInWithGoogle,
       signInWithFacebook,
@@ -219,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       user,
       profile,
-      cctStats,
+      cgStats,
       loading,
       signInWithGoogle,
       signInWithFacebook,

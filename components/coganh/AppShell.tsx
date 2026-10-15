@@ -212,12 +212,14 @@ function Shell() {
                 aria-label={displayName}
                 onClick={() => setMenu((m) => !m)}
               >
-                {profile?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.avatar_url} alt="" />
-                ) : (
-                  <span>{(displayName || "P").slice(0, 1).toUpperCase()}</span>
-                )}
+                <span className="cg-account-avatar">
+                  {profile?.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={profile.avatar_url} alt="" />
+                  ) : (
+                    (displayName || "P").slice(0, 1).toUpperCase()
+                  )}
+                </span>
                 {unreadCount > 0 && <span className="cg-avatar-dot" aria-label={String(unreadCount)} />}
               </button>
             ) : (
@@ -230,7 +232,14 @@ function Shell() {
                   {user ? (
                     <>
                       <div className="cg-account-menu-head">
-                        <span className="cg-account-avatar large">👤</span>
+                        <span className="cg-account-avatar large">
+                          {profile?.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={profile.avatar_url} alt="" />
+                          ) : (
+                            "👤"
+                          )}
+                        </span>
                         <div className="cg-account-menu-id">
                           <strong>{displayName}</strong>
                           <span className="cg-muted">{profile?.username ? `@${profile.username}` : user.email}</span>

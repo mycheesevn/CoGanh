@@ -1332,6 +1332,12 @@ body {
   font-size: 1.1rem;
   flex-shrink: 0;
 }
+.cg-account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .cg-account-avatar.large {
   width: 48px;
   height: 48px;

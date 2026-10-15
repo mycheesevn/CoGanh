@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import PlayView from "./PlayView";
 import HowToView from "./HowToView";
 import SetupView, { type SetupGame } from "./SetupView";
@@ -8,13 +8,32 @@ import { HistoryView } from "./HistoryView";
 import { LeaderboardView } from "./LeaderboardView";
 import { StatsView } from "./StatsView";
 import { CheckinView } from "./CheckinView";
+import RoomView, { roomErrText } from "./RoomView";
+import FriendsView from "./FriendsView";
+import CorrView from "./CorrView";
+import { NotificationsView } from "./NotificationsView";
+import { PushNudge, PushSettings } from "./PushSettings";
+import LibraryView from "./LibraryView";
+import PuzzleView from "./PuzzleView";
+import { fetchNotifications } from "@/lib/supabase/notifications";
 import { AuthModal } from "./AuthModal";
 import { ProfileModal } from "./ProfileModal";
 import { STR, loadLang, saveLang, type Lang } from "@/lib/coganh/i18n";
 import { isMuted, setMuted } from "@/lib/coganh/sound";
 import { AuthProvider, useAuth } from "@/lib/supabase/auth";
+import { createClient } from "@/lib/supabase/client";
+import { joinRoom, roomErrorKey } from "@/lib/supabase/rooms";
+import {
+  fetchPendingChallenges,
+  respondChallenge,
+  subscribeChallenges,
+  type Challenge,
+} from "@/lib/supabase/friends";
 
-type Mode = "play" | "setup" | "cvc" | "history" | "leaderboard" | "stats" | "checkin" | "howto";
+type Mode =
+  | "play" | "setup" | "cvc" | "rooms" | "friends" | "corr" | "inbox"
+  | "library" | "puzzle"
+  | "history" | "leaderboard" | "stats" | "checkin" | "howto";
 
 function Shell() {
   const [lang, setLang] = useState<Lang>(() => loadLang());
@@ -26,8 +45,112 @@ function Shell() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [customGame, setCustomGame] = useState<(SetupGame & { nonce: number }) | null>(null);
   const [cvcGame, setCvcGame] = useState<SetupGame | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [challengeToast, setChallengeToast] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [corrDeepLink, setCorrDeepLink] = useState<string | null>(null);
   const { user, profile, cgStats, displayName, signOut } = useAuth();
   const s = STR[lang] as Record<string, string | string[]>;
+  const userId = user?.id ?? null;
+
+  /* Invite link ?room=CODE → open the rooms mode with the code prefilled. */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("room");
+    if (code) {
+      setInviteCode(code.toUpperCase());
+      setMode("rooms");
+    }
+    const corr = params.get("corr");
+    if (corr) {
+      setCorrDeepLink(corr);
+      setMode("corr");
+    }
+  }, []);
+
+  /* Unread inbox badge. */
+  const refreshUnread = () => {
+    if (!userId) {
+      setUnreadCount(0);
+      return;
+    }
+    fetchNotifications()
+      .then(({ unread }) => setUnreadCount(unread))
+      .catch(() => {});
+  };
+  useEffect(() => {
+    refreshUnread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  /* Incoming challenges: initial fetch + realtime subscription. */
+  useEffect(() => {
+    if (!userId) {
+      setChallenge(null);
+      return;
+    }
+    let dead = false;
+    fetchPendingChallenges()
+      .then(({ incoming }) => {
+        if (!dead && incoming.length > 0) setChallenge(incoming[0]);
+      })
+      .catch(() => {});
+    const ch = subscribeChallenges(
+      userId,
+      (c) => {
+        if (!dead) setChallenge(c);
+      },
+      (name) => {
+        if (!dead) {
+          setChallengeToast(String(s.challengeDeclinedToast).replace("{name}", name));
+          setTimeout(() => setChallengeToast(null), 5000);
+        }
+      }
+    );
+    return () => {
+      dead = true;
+      try {
+        createClient().removeChannel(ch);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [userId]);
+
+  const acceptChallenge = async (c: Challenge) => {
+    setChallenge(null);
+    try {
+      // Join FIRST: if the room is full/closed/gone the challenge stays
+      // pending (retryable) instead of being silently consumed.
+      const room = await joinRoom(c.room_code);
+      await respondChallenge(c.id, true).catch(() => {});
+      setOpenRoomId(room.id);
+      setMode("rooms");
+    } catch (e) {
+      // Never fail silently: explain and keep the challenge actionable.
+      setChallengeToast(roomErrText(roomErrorKey(e), s));
+      setTimeout(() => setChallengeToast(null), 5000);
+      setChallenge(c);
+      return;
+    }
+    try {
+      const { incoming } = await fetchPendingChallenges();
+      if (incoming.length > 0) setChallenge(incoming[0]);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const declineChallenge = async (c: Challenge) => {
+    setChallenge(null);
+    try {
+      await respondChallenge(c.id, false);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const pickLang = (l: Lang) => {
     setLang(l);
@@ -55,6 +178,11 @@ function Shell() {
   const modes: { id: Mode; icon: string; label: string }[] = [
     { id: "play", icon: "🎮", label: String(s.playVsComputer) },
     { id: "setup", icon: "🧩", label: String(s.setupTitleCg) },
+    { id: "rooms", icon: "🏠", label: String(s.room) },
+    { id: "friends", icon: "👥", label: String(s.friends) },
+    { id: "corr", icon: "📬", label: String(s.corrTitle) },
+    { id: "library", icon: "📚", label: String(s.bikip) },
+    { id: "puzzle", icon: "🧩", label: String(s.puzzle) },
     { id: "history", icon: "📜", label: String(s.history) },
     { id: "leaderboard", icon: "🏆", label: String(s.leaderboard) },
     { id: "stats", icon: "📊", label: String(s.stats) },
@@ -89,6 +217,7 @@ function Shell() {
                 ) : (
                   <span>{(displayName || "P").slice(0, 1).toUpperCase()}</span>
                 )}
+                {unreadCount > 0 && <span className="cg-avatar-dot" aria-label={String(unreadCount)} />}
               </button>
             ) : (
               <button className="cg-gear-btn" aria-label={String(s.settings)} onClick={() => setMenu((m) => !m)}>⚙️</button>
@@ -106,9 +235,16 @@ function Shell() {
                       <button className="cg-btn" onClick={() => { setMenu(false); setProfileOpen(true); }}>
                         👤 {String(s.profile)}
                       </button>
+                      <button className="cg-btn" onClick={() => pickMode("inbox")}>
+                        {String(s.notifications)}
+                        {unreadCount > 0 && (
+                          <span className="cg-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                        )}
+                      </button>
                       <button className="cg-btn" onClick={() => pickMode("checkin")}>
                         📅 {String(s.checkin)}
                       </button>
+                      <PushSettings lang={lang} />
                     </>
                   ) : (
                     <button className="cg-btn cg-btn-primary" onClick={openLogin}>
@@ -183,6 +319,22 @@ function Shell() {
         </div>
       )}
 
+      {challenge && (
+        <div className="cg-challenge-banner" role="alert">
+          <span>
+            {String(s.challengeFrom).replace("{name}", challenge.challenger_name ?? "…")}
+          </span>
+          <button type="button" className="cg-btn small cg-btn-primary" onClick={() => void acceptChallenge(challenge)}>
+            {String(s.challengeAccept)}
+          </button>
+          <button type="button" className="cg-btn small" onClick={() => void declineChallenge(challenge)}>
+            {String(s.challengeDecline)}
+          </button>
+        </div>
+      )}
+      {challengeToast && <div className="cg-challenge-toast">{challengeToast}</div>}
+      {user && <PushNudge lang={lang} />}
+
       <main>
         {mode === "play" && <PlayView lang={lang} custom={customGame} onLogin={openLogin} />}
         {mode === "setup" && (
@@ -191,6 +343,43 @@ function Shell() {
         {mode === "cvc" && cvcGame && (
           <CvCView lang={lang} game={cvcGame} user={user} onBack={() => setMode("setup")} />
         )}
+        {mode === "rooms" && (
+          <RoomView
+            lang={lang}
+            user={user}
+            inviteCode={inviteCode}
+            onConsumeInvite={() => setInviteCode(null)}
+            onLogin={openLogin}
+            openRoomId={openRoomId}
+          />
+        )}
+        {mode === "friends" &&
+          (user ? (
+            <FriendsView
+              lang={lang}
+              userId={user.id}
+              myName={displayName}
+              onAcceptChallenge={acceptChallenge}
+            />
+          ) : (
+            <div className="cg-scroll-area">
+              <div className="cg-view">
+                <h2>{String(s.friends)}</h2>
+                <div className="cg-panel">
+                  <p className="cg-hint">{String(s.loginToViewHistory)}</p>
+                  <button type="button" className="cg-btn cg-btn-primary" onClick={openLogin}>
+                    {String(s.login)}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        {mode === "corr" && (
+          <CorrView lang={lang} userId={userId} onLogin={openLogin} deepLinkGameId={corrDeepLink} />
+        )}
+        {mode === "inbox" && <NotificationsView lang={lang} onChanged={refreshUnread} />}
+        {mode === "library" && <LibraryView lang={lang} userId={userId} />}
+        {mode === "puzzle" && <PuzzleView lang={lang} userId={userId} onLogin={openLogin} />}
         {mode === "history" && <HistoryView lang={lang} user={user} onLogin={openLogin} />}
         {mode === "leaderboard" && <LeaderboardView lang={lang} myUserId={user?.id ?? null} />}
         {mode === "stats" && <StatsView lang={lang} />}

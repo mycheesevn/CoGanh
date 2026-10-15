@@ -1958,3 +1958,32 @@ body {
   100% { transform: scale(1); }
 }
 .cg-piece-flip { transform-box: fill-box; transform-origin: center; animation: cgFlipPulse 0.45s ease; }
+
+/* Incoming-challenge banner + toast (Phase 3B) */
+.cg-challenge-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 10px auto 0; max-width: 1180px; padding: 10px 14px;
+  background: #fdf3d8; border: 1.5px solid #e8a33d; border-radius: 10px;
+  font-weight: 600;
+}
+.cg-challenge-toast {
+  margin: 10px auto 0; max-width: 1180px; padding: 10px 14px;
+  background: #fde8e8; border: 1.5px solid #d66; border-radius: 10px;
+}
+
+/* Inbox badge + avatar dot (Phase 3C) */
+.cg-badge {
+  display: inline-block; margin-left: 8px; min-width: 20px; text-align: center;
+  background: #d33; color: #fff; border-radius: 999px; font-size: 12px;
+  padding: 1px 6px; font-weight: 700;
+}
+.cg-avatar-btn { position: relative; }
+.cg-avatar-dot {
+  position: absolute; top: -2px; right: -2px; width: 11px; height: 11px;
+  background: #d33; border: 2px solid #fff; border-radius: 50%;
+}
+
+/* Bí Kíp lessons (Phase 3C) */
+.cg-lib-chapter { margin: 14px 0; }
+.cg-lib-chapter h4 { margin: 6px 0 2px; }
+.cg-lesson-text { line-height: 1.55; }

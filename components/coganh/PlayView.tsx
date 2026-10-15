@@ -271,6 +271,27 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
           <div className="cg-buttons">
             <button className="cg-btn cg-btn-primary" onClick={newGame}>{String(s.newGame)}</button>
             <button className="cg-btn" onClick={undo} disabled={plies === 0 || thinking}>{String(s.undo)}</button>
+            {over && (
+              <button
+                className="cg-btn"
+                onClick={async () => {
+                  const { renderShareCard, sharePng } = await import("@/lib/coganh/shareCard");
+                  const headline = over.winner === "blue"
+                    ? (lang === "vi" ? "🔵 Xanh thắng!" : "🔵 Blue wins!")
+                    : (lang === "vi" ? "🔴 Đỏ thắng!" : "🔴 Red wins!");
+                  const blob = await renderShareCard({
+                    state: board,
+                    headline,
+                    subline: `${labels.length} ${lang === "vi" ? "nước đi" : "moves"} · ${lang === "vi" ? "vs Máy cấp" : "vs Computer L"}${level}`,
+                    appName: lang === "vi" ? "Cờ Gánh" : "Co Ganh",
+                    appUrl: "coganh-my-cheese-vn.vercel.app",
+                  });
+                  await sharePng(blob, headline, headline);
+                }}
+              >
+                {String(s.share)}
+              </button>
+            )}
             {!over && (
               confirmResign ? (
                 <>

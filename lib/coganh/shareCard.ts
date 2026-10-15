@@ -4,10 +4,11 @@
  * the initial board with half-size discs, the player's headline and
  * stats line, and the site CTA. Mirrors the sibling games' card.
  */
-import { initialBoard, colOf, rowOf, NEIGHBORS } from "./engine";
+import { initialBoard, colOf, rowOf, NEIGHBORS, type Board } from "./engine";
 
 export interface ShareCardOpts {
-  state: unknown;
+  /** Board to draw; null = the initial position (profile/rank cards). */
+  state: Board | null;
   headline: string;
   subline: string;
   appName: string;
@@ -80,8 +81,8 @@ export function renderShareCard(opts: ShareCardOpts): Promise<Blob> {
       }
     }
     ctx.setLineDash([]);
-    // pieces (initial position, half-size discs like the game board)
-    const board = initialBoard();
+    // pieces (the given position, or the initial one; half-size discs)
+    const board = opts.state ?? initialBoard();
     board.forEach((cell, i) => {
       if (!cell) return;
       const red = cell === "red";

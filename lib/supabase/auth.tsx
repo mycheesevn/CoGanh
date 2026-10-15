@@ -1,0 +1,241 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type { Session } from "@supabase/supabase-js";
+import { createClient } from "./client";
+
+export interface CctUser {
+  id: string;
+  email?: string;
+}
+
+/** Same columns chess selects from the SHARED `profiles` table — never recreate it. */
+export interface Profile {
+  id: string;
+  username: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
+  birth_date: string | null;
+  city: string | null;
+  country: string | null;
+}
+
+export interface CctStats {
+  xp: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  games_played: number;
+  /** Elo rating (migration 006); 800 until the migration lands. */
+  rating: number;
+  peak_rating: number;
+}
+
+interface AuthCtx {
+  user: CctUser | null;
+  profile: Profile | null;
+  cctStats: CctStats | null;
+  loading: boolean;
+  signInWithGoogle: () => Promise<void>;
+  signInWithFacebook: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  signOut: () => Promise<void>;
+  refreshStats: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  displayName: string;
+}
+
+const Ctx = createContext<AuthCtx | null>(null);
+
+/** Display-name fallback chain: full_name → username → email prefix. */
+export function displayName(
+  profile: Pick<Profile, "full_name" | "username"> | null,
+  email?: string | null
+): string {
+  if (profile?.full_name?.trim()) return profile.full_name.trim();
+  if (profile?.username?.trim()) return profile.username.trim();
+  if (email) return email.split("@")[0];
+  return "Player";
+}
+
+/** Reads the `cct_stats` row; returns null when the table doesn't exist yet
+ *  (phase 1: no stats table) — never throws. */
+async function fetchCctStats(uid: string): Promise<CctStats | null> {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("cct_stats")
+      .select("*")
+      .eq("user_id", uid)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as Record<string, number | null>;
+    return {
+      xp: row.xp ?? 0,
+      wins: row.wins ?? 0,
+      losses: row.losses ?? 0,
+      draws: row.draws ?? 0,
+      games_played: row.games_played ?? 0,
+      rating: row.rating ?? 800,
+      peak_rating: row.peak_rating ?? 800,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<CctUser | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [cctStats, setCctStats] = useState<CctStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadProfile = useCallback(async (uid: string) => {
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, username, full_name, avatar_url, birth_date, city, country")
+        .eq("id", uid)
+        .single();
+      if (data) setProfile(data as Profile);
+      setCctStats(await fetchCctStats(uid));
+    } catch {
+      /* supabase not configured */
+    }
+  }, []);
+
+  useEffect(() => {
+    // Client-side only: never touch Supabase during SSR/prerender.
+    let sub: { unsubscribe: () => void } | null = null;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        const u = data.session?.user ?? null;
+        setUser(u ? { id: u.id, email: u.email ?? undefined } : null);
+        if (u) await loadProfile(u.id);
+        const { data: s } = supabase.auth.onAuthStateChange(
+          (_e: string, session: Session | null) => {
+            const su = session?.user ?? null;
+            setUser(su ? { id: su.id, email: su.email ?? undefined } : null);
+            if (su) loadProfile(su.id);
+            else {
+              setProfile(null);
+              setCctStats(null);
+            }
+          }
+        );
+        sub = s.subscription;
+      } catch {
+        /* supabase not configured — stay signed out */
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => sub?.unsubscribe();
+  }, [loadProfile]);
+
+  const signInWithGoogle = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+  }, []);
+
+  const signInWithFacebook = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: "facebook",
+      options: { redirectTo: window.location.origin },
+    });
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    try {
+      const { error } = await createClient().auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error: error ? error.message : null };
+    } catch {
+      return { error: "Supabase not configured" };
+    }
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    try {
+      const { error } = await createClient().auth.signUp({ email, password });
+      return { error: error ? error.message : null };
+    } catch {
+      return { error: "Supabase not configured" };
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await createClient().auth.signOut();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const refreshStats = useCallback(async () => {
+    if (user) {
+      await loadProfile(user.id);
+    }
+  }, [user, loadProfile]);
+
+  // loadProfile refreshes both the profile row and the stats.
+  const refreshProfile = refreshStats;
+
+  const name = useMemo(() => displayName(profile, user?.email), [profile, user]);
+
+  const value = useMemo(
+    () => ({
+      user,
+      profile,
+      cctStats,
+      loading,
+      signInWithGoogle,
+      signInWithFacebook,
+      signIn,
+      signUp,
+      signOut,
+      refreshStats,
+      refreshProfile,
+      displayName: name,
+    }),
+    [
+      user,
+      profile,
+      cctStats,
+      loading,
+      signInWithGoogle,
+      signInWithFacebook,
+      signIn,
+      signUp,
+      signOut,
+      refreshStats,
+      name,
+    ]
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useAuth(): AuthCtx {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  return ctx;
+}

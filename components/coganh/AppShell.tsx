@@ -200,6 +200,7 @@ function Shell() {
             <span className="cg-muted">{String(s.tagline)}</span>
           </div>
           <div className="cg-account">
+            <div className="cg-user" role="group" aria-label="Account">
             {user && (
               <button className="cg-rating-chip" onClick={() => pickMode("leaderboard")} title={String(s.leaderboard)}>
                 ⭐ {cgStats?.rating ?? 800}
@@ -229,8 +230,11 @@ function Shell() {
                   {user ? (
                     <>
                       <div className="cg-account-menu-head">
-                        <strong>{displayName}</strong>
-                        <span className="cg-account-menu-id">{profile?.username ? `@${profile.username}` : user.email}</span>
+                        <span className="cg-account-avatar large">👤</span>
+                        <div className="cg-account-menu-id">
+                          <strong>{displayName}</strong>
+                          <span className="cg-muted">{profile?.username ? `@${profile.username}` : user.email}</span>
+                        </div>
                       </div>
                       <button className="cg-btn" onClick={() => { setMenu(false); setProfileOpen(true); }}>
                         👤 {String(s.profile)}
@@ -287,6 +291,7 @@ function Shell() {
                 </div>
               </>
             )}
+            </div>
           </div>
         </div>
       </header>
@@ -335,7 +340,6 @@ function Shell() {
       {challengeToast && <div className="cg-challenge-toast">{challengeToast}</div>}
       {user && <PushNudge lang={lang} />}
 
-      <main>
         {mode === "play" && <PlayView lang={lang} custom={customGame} onLogin={openLogin} />}
         {mode === "setup" && (
           <SetupView lang={lang} user={user} onLogin={openLogin} onPlay={startCustom} onCvC={startCvC} />
@@ -385,7 +389,6 @@ function Shell() {
         {mode === "stats" && <StatsView lang={lang} />}
         {mode === "checkin" && <CheckinView lang={lang} user={user} onLogin={openLogin} />}
         {mode === "howto" && <HowToView lang={lang} />}
-      </main>
       <footer className="cg-footer">{String(s.footer)}</footer>
 
       <AuthModal lang={lang} open={authOpen} onClose={() => setAuthOpen(false)} />

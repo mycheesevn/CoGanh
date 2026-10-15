@@ -197,11 +197,6 @@ function LessonPlayer({
 
   return (
     <div className="cg-layout">
-      <div className="cg-backbar">
-        <button type="button" className="cg-btn" onClick={onBack}>
-          {String(s.bikipBack)}
-        </button>
-      </div>
       <div className="cg-board-area">
         <div className="cg-board-fit">
           <Board
@@ -215,6 +210,11 @@ function LessonPlayer({
         </div>
       </div>
       <aside className="cg-panel">
+        <div>
+          <button type="button" className="cg-btn small" onClick={onBack}>
+            ← {String(s.bikipBack)}
+          </button>
+        </div>
         <h3>{lang === "vi" ? lesson.title.vi : lesson.title.en}</h3>
         {stepIdx === 0 && !finished && (
           <p className="cg-lesson-text">{lang === "vi" ? lesson.intro.vi : lesson.intro.en}</p>

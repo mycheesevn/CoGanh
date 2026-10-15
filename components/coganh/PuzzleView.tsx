@@ -10,7 +10,7 @@
  * winning move exists.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Board from "./Board";
 import { STR, type Lang } from "@/lib/coganh/i18n";
 import {
@@ -49,10 +49,14 @@ interface PuzzlePlayerProps {
   turn: Color;
   solutionLabel?: string;
   onSolved?: () => void;
+  /** Extra content rendered at the top of the side panel (tabs, back row) —
+      panel content never sits above the layout, so the board keeps the
+      exact same size as every other view (family anatomy). */
+  panelHead?: ReactNode;
 }
 
 /** Interactive puzzle board: flipped when red is the solver. */
-export function PuzzlePlayer({ lang, pos, turn, solutionLabel, onSolved }: PuzzlePlayerProps) {
+export function PuzzlePlayer({ lang, pos, turn, solutionLabel, onSolved, panelHead }: PuzzlePlayerProps) {
   const s = STR[lang];
   const flip = turn === "red";
   const rot = (i: number) => (flip ? 24 - i : i);
@@ -127,6 +131,7 @@ export function PuzzlePlayer({ lang, pos, turn, solutionLabel, onSolved }: Puzzl
         </div>
       </div>
       <aside className="cg-panel">
+        {panelHead}
         <p className="cg-status">
           {turn === "blue" ? `🔵 ${String(s.blueSide)}` : `🔴 ${String(s.redSide)}`} — {String(s.puzzleSolvePrompt)}
         </p>
@@ -189,42 +194,45 @@ export default function PuzzleView({ lang, userId, onLogin }: Props) {
 
   const solvedToday = solvedDays[dayKey] === puzzle.id;
 
+  const tabsNode = (
+    <div className="cg-tabs" role="tablist">
+      <button type="button" className={tab === "daily" ? "active" : ""} onClick={() => setTab("daily")}>
+        {String(s.puzzleDaily)}
+      </button>
+      <button type="button" className={tab === "community" ? "active" : ""} onClick={() => setTab("community")}>
+        {String(s.puzzleCommunity)}
+      </button>
+    </div>
+  );
+
   return (
-    <div className="cg-scroll-area">
-      <div className="cg-tabs" role="tablist">
-        <button type="button" className={tab === "daily" ? "active" : ""} onClick={() => setTab("daily")}>
-          {String(s.puzzleDaily)}
-        </button>
-        <button type="button" className={tab === "community" ? "active" : ""} onClick={() => setTab("community")}>
-          {String(s.puzzleCommunity)}
-        </button>
-      </div>
+    <>
       {tab === "daily" && (
-        <>
-          <div className="cg-history-head">
-            <h3>🧩 {String(s.puzzleDaily)}</h3>
-            <span className="cg-history-count">
-              🔥 {String(s.puzzleStreak)}: {streak} {String(s.puzzleDays)}
-              {solvedToday ? " · ✓" : ""}
-            </span>
-          </div>
-          <PuzzlePlayer
-            lang={lang}
-            pos={puzzle.pos}
-            turn={puzzle.turn}
-            solutionLabel={puzzle.solution}
-            onSolved={() => {
-              markSolved(dayKey, puzzle.id);
-              setSolvedDays(loadSolvedDays());
-              setStreak(puzzleStreak());
-            }}
-          />
-        </>
+        <PuzzlePlayer
+          lang={lang}
+          pos={puzzle.pos}
+          turn={puzzle.turn}
+          solutionLabel={puzzle.solution}
+          panelHead={
+            <>
+              {tabsNode}
+              <p className="cg-hint">
+                🔥 {String(s.puzzleStreak)}: {streak} {String(s.puzzleDays)}
+                {solvedToday ? " · ✓" : ""}
+              </p>
+            </>
+          }
+          onSolved={() => {
+            markSolved(dayKey, puzzle.id);
+            setSolvedDays(loadSolvedDays());
+            setStreak(puzzleStreak());
+          }}
+        />
       )}
       {tab === "community" && (
-        <CommunityPuzzles lang={lang} userId={userId} onLogin={onLogin} />
+        <CommunityPuzzles lang={lang} userId={userId} onLogin={onLogin} tabsNode={tabsNode} />
       )}
-    </div>
+    </>
   );
 }
 
@@ -244,7 +252,7 @@ interface PuzzleCard {
   created_at: string;
 }
 
-function CommunityPuzzles({ lang, userId, onLogin }: Props) {
+function CommunityPuzzles({ lang, userId, onLogin, tabsNode }: Props & { tabsNode?: ReactNode }) {
   const s = STR[lang];
   const [sort, setSort] = useState<"new" | "popular">("new");
   const [mine, setMine] = useState(false);
@@ -284,28 +292,28 @@ function CommunityPuzzles({ lang, userId, onLogin }: Props) {
 
   if (playing) {
     return (
-      <div>
-        <div className="cg-backbar">
-          <button type="button" className="cg-btn" onClick={() => setPlaying(null)}>
-            ← {String(s.puzzleCommunity)}
-          </button>
-          <strong>{playing.title}</strong>
-          <span className="cg-hint">· {playing.creator_name}</span>
-        </div>
-        <PuzzlePlayer
-          lang={lang}
-          pos={playing.pos}
-          turn={playing.turn}
-          solutionLabel={playing.solution[0]}
-          onSolved={async () => {
+      <PuzzlePlayer
+        lang={lang}
+        pos={playing.pos}
+        turn={playing.turn}
+        solutionLabel={playing.solution[0]}
+        panelHead={
+          <div className="cg-row">
+            <button type="button" className="cg-btn small" onClick={() => setPlaying(null)}>
+              ← {String(s.puzzleCommunity)}
+            </button>
+            <strong>{playing.title}</strong>
+            <span className="cg-hint">· {playing.creator_name}</span>
+          </div>
+        }
+        onSolved={async () => {
             try {
               const supabase = createClient();
               await supabase.rpc("cg_record_puzzle_solve", { p_puzzle_id: playing.id });
             } catch { /* best-effort counter */ }
             load().catch(() => {});
           }}
-        />
-      </div>
+      />
     );
   }
 
@@ -321,7 +329,9 @@ function CommunityPuzzles({ lang, userId, onLogin }: Props) {
   }
 
   return (
-    <div>
+    <div className="cg-scroll-area">
+      <div className="cg-view">
+      {tabsNode}
       <div className="cg-row cg-row-wrap">
         <button type="button" className={`cg-btn ${sort === "new" && !mine ? "cg-btn-primary" : ""}`}
           onClick={() => { setSort("new"); setMine(false); setPage(0); }}>
@@ -374,6 +384,7 @@ function CommunityPuzzles({ lang, userId, onLogin }: Props) {
         <button type="button" className="cg-btn" disabled={cards.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>
           →
         </button>
+      </div>
       </div>
     </div>
   );

@@ -5,8 +5,8 @@ import type { Lang } from "@/lib/coganh/i18n";
 export default function HowToView({ lang }: { lang: Lang }) {
   if (lang === "en") {
     return (
-      <div className="cg-view">
-        <div className="cg-panel" style={{ maxWidth: 720, margin: "0 auto", textAlign: "left" }}>
+      <div className="cg-scroll-area">
+        <div className="cg-howto">
           <h2>How to play Co Ganh</h2>
           <p>All 16 pieces are equal — there is no king and no ranks. You play <strong>Blue</strong> (bottom) and move first; the computer plays Red.</p>
           <h3>Moving</h3>
@@ -24,8 +24,8 @@ export default function HowToView({ lang }: { lang: Lang }) {
     );
   }
   return (
-    <div className="cg-view">
-      <div className="cg-panel" style={{ maxWidth: 720, margin: "0 auto", textAlign: "left" }}>
+    <div className="cg-scroll-area">
+      <div className="cg-howto">
         <h2>Cách chơi Cờ Gánh</h2>
         <p>Cả 16 quân đều bình đẳng — không có Tướng, không cấp bậc. Bạn cầm quân <strong>Xanh</strong> (phía dưới) và đi trước; máy cầm quân Đỏ.</p>
         <h3>Đi quân</h3>

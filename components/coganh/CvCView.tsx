@@ -99,8 +99,7 @@ export default function CvCView({ lang, game, user, onBack }: Props) {
     : null;
 
   return (
-    <div className="cg-view">
-      <div className="cg-layout">
+    <div className="cg-layout">
         <div className="cg-board-area">
           <div className="cg-board-fit">
             <Board
@@ -165,7 +164,6 @@ export default function CvCView({ lang, game, user, onBack }: Props) {
             </ol>
           </div>
         </aside>
-      </div>
     </div>
   );
 }

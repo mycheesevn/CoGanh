@@ -208,8 +208,7 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
     : null;
 
   return (
-    <div className="cg-view">
-      <div className="cg-layout">
+    <div className="cg-layout">
         <div className="cg-board-area">
           <div className="cg-board-fit">
             <Board
@@ -318,7 +317,6 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
             </ol>
           </div>
         </aside>
-      </div>
     </div>
   );
 }

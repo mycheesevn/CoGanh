@@ -102,7 +102,8 @@ export function StatsView({ lang }: { lang: Lang }) {
   };
 
   return (
-    <div>
+    <div className="cg-scroll-area">
+      <div className="cg-view">
       <div className="cg-stat-cards">
         <div className="cg-stat-card">
           <div className="num">🎮 {stats.plays_total}</div>
@@ -172,6 +173,7 @@ export function StatsView({ lang }: { lang: Lang }) {
             <span className="cg-bar-label">{b.label}</span>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

@@ -131,8 +131,7 @@ export default function SetupView({ lang, user, onLogin, onPlay, onCvC }: Props)
   };
 
   return (
-    <div className="cg-view">
-      <div className="cg-layout">
+    <div className="cg-layout">
         <div className="cg-board-area">
           <div className="cg-board-fit">
             <Board board={cells} selected={null} targets={[]} lastMove={null} flipped={[]} onPoint={cycle} />
@@ -208,7 +207,6 @@ export default function SetupView({ lang, user, onLogin, onPlay, onCvC }: Props)
             </p>
           )}
         </aside>
-      </div>
     </div>
   );
 }

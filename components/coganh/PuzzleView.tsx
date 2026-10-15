@@ -177,11 +177,17 @@ interface Props {
   lang: Lang;
   userId: string | null;
   onLogin: () => void;
+  /** Which tab to open on (the drawer's Community entry passes "community"). */
+  initialTab?: "daily" | "community";
 }
 
-export default function PuzzleView({ lang, userId, onLogin }: Props) {
+export default function PuzzleView({ lang, userId, onLogin, initialTab }: Props) {
   const s = STR[lang];
-  const [tab, setTab] = useState<"daily" | "community">("daily");
+  const [tab, setTab] = useState<"daily" | "community">(initialTab ?? "daily");
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
   const dayKey = puzzleDayKey();
   const puzzle = dailyPuzzle();
   const [solvedDays, setSolvedDays] = useState<Record<string, string>>({});

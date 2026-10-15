@@ -742,6 +742,10 @@ body {
     padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
+  .cg-quick {
+    flex-wrap: wrap;
+  }
+
   .cg-title {
     font-size: 1rem;
   }

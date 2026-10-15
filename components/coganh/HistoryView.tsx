@@ -6,6 +6,9 @@ import { fetchCgGames, type CgGameRow } from "@/lib/supabase/history";
 import { useAuth } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/client";
 import { Pagination } from "./Pagination";
+import { ReplayView } from "./ReplayView";
+import { VideoExportModal, type CgVideoGame } from "./VideoExportModal";
+import type { ReplayGame } from "@/lib/coganh/replay";
 
 const PAGE_SIZE = 10;
 
@@ -54,6 +57,8 @@ export function HistoryView({ lang, user, onLogin }: Props) {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [ratings, setRatings] = useState<number[]>([]);
+  const [replay, setReplay] = useState<ReplayGame | null>(null);
+  const [videoGame, setVideoGame] = useState<CgVideoGame | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -86,6 +91,34 @@ export function HistoryView({ lang, user, onLogin }: Props) {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US");
+
+  const openReplay = (g: CgGameRow) => {
+    const isCvc = g.player_color === "cvc";
+    const reason = reasonLabel(g.reason, s);
+    setReplay({
+      labels: g.moves ?? [],
+      startPos: g.start_pos || undefined,
+      startTurn: "blue",
+      title: isCvc
+        ? `🤖 ${String(s.cvcGame)}`
+        : `${g.result === "win" ? "🎉" : g.result === "loss" ? "😞" : "🤝"} ${levelShort(lang, g.level)}`,
+      subtitle: `${fmtDate(g.created_at)} · ${isCvc ? "" : `${reason} · `}${g.plies} ${lang === "vi" ? "nước" : "plies"}`,
+    });
+  };
+
+  if (replay) {
+    return (
+      <>
+        <ReplayView
+          lang={lang}
+          game={replay}
+          onBack={() => setReplay(null)}
+          onExportVideo={(g) => setVideoGame({ ...g })}
+        />
+        <VideoExportModal lang={lang} game={videoGame} onClose={() => setVideoGame(null)} />
+      </>
+    );
+  }
 
   if (!user) {
     return (
@@ -147,6 +180,11 @@ export function HistoryView({ lang, user, onLogin }: Props) {
                       {` · ${g.plies} ${lang === "vi" ? "nước" : "plies"}`}
                     </span>
                     <span className="cg-lb-title">{fmtDate(g.created_at)}</span>
+                    {(g.moves?.length ?? 0) > 0 && (
+                      <button type="button" className="cg-btn small" onClick={() => openReplay(g)}>
+                        {String(s.replay)}
+                      </button>
+                    )}
                   </li>
                 );
               })}

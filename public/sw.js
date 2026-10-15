@@ -2,7 +2,7 @@
 // (Installable PWA shell; the app's icons are route-served at /pwa/*.)
 
 self.addEventListener("push", (event) => {
-  let data = { title: "🏁 Cờ Chiếu Tướng", body: "", url: "/", tag: undefined };
+  let data = { title: "🔵 Cờ Gánh", body: "", url: "/", tag: undefined };
   try {
     if (event.data) data = Object.assign(data, event.data.json());
   } catch {

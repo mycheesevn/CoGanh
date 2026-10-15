@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="6" y="6" width="500" height="500" rx="112" fill="#f6e7c1"/>
+  <rect x="6" y="6" width="500" height="500" rx="112" fill="none" stroke="#8a6d4a" stroke-width="10"/>
+  <g stroke="#5b4632" stroke-width="10">
+    <line x1="96" y1="96" x2="416" y2="96"/><line x1="96" y1="176" x2="416" y2="176"/>
+    <line x1="96" y1="256" x2="416" y2="256"/><line x1="96" y1="336" x2="416" y2="336"/>
+    <line x1="96" y1="416" x2="416" y2="416"/>
+    <line x1="96" y1="96" x2="96" y2="416"/><line x1="176" y1="96" x2="176" y2="416"/>
+    <line x1="256" y1="96" x2="256" y2="416"/><line x1="336" y1="96" x2="336" y2="416"/>
+    <line x1="416" y1="96" x2="416" y2="416"/>
+  </g>
+  <g stroke="#c07f3e" stroke-width="7" stroke-dasharray="14 10">
+    <line x1="96" y1="96" x2="176" y2="176"/><line x1="256" y1="96" x2="176" y2="176"/>
+    <line x1="256" y1="96" x2="336" y2="176"/><line x1="416" y1="96" x2="336" y2="176"/>
+    <line x1="176" y1="336" x2="256" y2="416"/><line x1="336" y1="336" x2="256" y2="416"/>
+    <line x1="96" y1="416" x2="176" y2="336"/><line x1="416" y1="416" x2="336" y2="336"/>
+  </g>
+  <g fill="#cf3a30" stroke="#b02a20" stroke-width="6">
+    <circle cx="96" cy="96" r="34"/><circle cx="176" cy="96" r="34"/><circle cx="256" cy="96" r="34"/>
+    <circle cx="336" cy="96" r="34"/><circle cx="416" cy="96" r="34"/>
+    <circle cx="96" cy="176" r="34"/><circle cx="256" cy="176" r="34"/><circle cx="416" cy="176" r="34"/>
+  </g>
+  <g fill="#2569b8" stroke="#1c4f8a" stroke-width="6">
+    <circle cx="96" cy="336" r="34"/><circle cx="256" cy="336" r="34"/><circle cx="416" cy="336" r="34"/>
+    <circle cx="96" cy="416" r="34"/><circle cx="176" cy="416" r="34"/><circle cx="256" cy="416" r="34"/>
+    <circle cx="336" cy="416" r="34"/><circle cx="416" cy="416" r="34"/>
+  </g>
+</svg>

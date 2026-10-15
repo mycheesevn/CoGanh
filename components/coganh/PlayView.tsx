@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Board from "./Board";
 import {
-  applyMove, boardFromString, boardToString, countPieces, gameStatus,
+  applyMove, boardFromString, boardToString, gameStatus,
   initialBoard, isGanhMove, legalMoves, moveLabel, positionKey,
   type Board as BoardState, type Color, type Move,
 } from "@/lib/coganh/engine";
@@ -15,21 +15,41 @@ import { recordCgGameResult } from "@/lib/supabase/results";
 import { recordCgGameEvent } from "@/lib/supabase/stats";
 import type { SetupGame } from "./SetupView";
 
+/** Quick-bar actions the shell renders in the header (play mode only). */
+export interface PlayActions {
+  undo: () => void;
+  canUndo: boolean;
+  swapSides: () => void;
+  canSwap: boolean;
+  hint: () => void;
+  canHint: boolean;
+  hintThinking: boolean;
+  newGame: () => void;
+}
+
 interface Over {
   winner: Color;
   reason: "flipped-all" | "no-moves" | "resign";
 }
 
-const LEVEL_KEY = "cg-level";
+const other = (c: Color): Color => (c === "blue" ? "red" : "blue");
+const rot = (i: number) => 24 - i; // 180° rotation when the human plays Red
 
 interface Props {
   lang: Lang;
+  /** AI level, owned by the shell (drawer play-settings select). */
+  level: number;
+  /** Side the human plays; Blue by default. Owned by the shell. */
+  humanColor: Color;
   /** Custom start handed over from the setup editor (nonce forces a reset). */
   custom?: (SetupGame & { nonce: number }) | null;
   onLogin: () => void;
+  onSwapSides: () => void;
+  actionsRef: React.MutableRefObject<PlayActions | null>;
+  notifyActions: () => void;
 }
 
-export default function PlayView({ lang, custom, onLogin }: Props) {
+export default function PlayView({ lang, level, humanColor, custom, onLogin, onSwapSides, actionsRef, notifyActions }: Props) {
   const s = STR[lang] as Record<string, string | string[]>;
   const { user, refreshStats } = useAuth();
   const [boards, setBoards] = useState<BoardState[]>(() => [initialBoard()]);
@@ -37,37 +57,33 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
   const [baseTurn, setBaseTurn] = useState<Color>("blue");
   const [startPos, setStartPos] = useState<string>(() => boardToString(initialBoard()));
   const [selected, setSelected] = useState<number | null>(null);
-  const [level, setLevel] = useState<number>(() => {
-    try { return Math.min(12, Math.max(1, Number(localStorage.getItem(LEVEL_KEY)) || 5)); }
-    catch { return 5; }
-  });
   const [over, setOver] = useState<Over | null>(null);
   const [thinking, setThinking] = useState(false);
-  const [confirmResign, setConfirmResign] = useState(false);
+  const [hintMove, setHintMove] = useState<Move | null>(null);
+  const [hintThinking, setHintThinking] = useState(false);
   const [lastFlips, setLastFlips] = useState<{ ganh: number[]; chet: number[]; move: Move } | null>(null);
   const [xpToast, setXpToast] = useState<number | null>(null);
   const movesRef = useRef<HTMLDivElement>(null);
   const recordedRef = useRef(false);
   const startedRef = useRef(false);
+  const prevSideRef = useRef(humanColor);
 
+  const aiColor = other(humanColor);
   const board = boards[boards.length - 1];
   const plies = labels.length;
   const turn: Color = (plies + (baseTurn === "red" ? 1 : 0)) % 2 === 0 ? "blue" : "red";
-  const humanTurn = turn === "blue" && !over;
+  const humanTurn = turn === humanColor && !over;
 
   const legal = useMemo(
-    () => (humanTurn ? legalMoves(board, "blue") : []),
-    [board, humanTurn]
+    () => (humanTurn ? legalMoves(board, humanColor) : []),
+    [board, humanTurn, humanColor]
   );
-  const forced = legal.length > 0 && isGanhMove(board, legal[0], "blue");
+  const forced = legal.length > 0 && isGanhMove(board, legal[0], humanColor);
   const targets = useMemo(
     () => (selected === null ? [] : legal.filter((m) => m.from === selected).map((m) => m.to)),
     [legal, selected]
   );
   const selectable = useMemo(() => new Set(legal.map((m) => m.from)), [legal]);
-
-  const blueCount = countPieces(board, "blue");
-  const redCount = countPieces(board, "red");
 
   useEffect(() => {
     movesRef.current?.scrollTo({ top: movesRef.current.scrollHeight });
@@ -82,7 +98,7 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
     setSelected(null);
     setOver(null);
     setLastFlips(null);
-    setConfirmResign(false);
+    setHintMove(null);
     setXpToast(null);
     recordedRef.current = false;
     startedRef.current = true;
@@ -109,11 +125,23 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [custom?.nonce]);
 
-  /* Record the result once when the game ends (signed-in only). */
+  /* Switching sides starts a fresh standard game (PacClone behaviour).
+     Compare against the previous value instead of a mounted flag —
+     StrictMode re-runs effects on mount and would wipe a custom start. */
+  useEffect(() => {
+    if (prevSideRef.current === humanColor) return;
+    prevSideRef.current = humanColor;
+    reset(boardToString(initialBoard()), "blue");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [humanColor]);
+
+  /* Record the result once when the game ends (signed-in only).
+     The result is stored from the HUMAN's point of view (the record RPC
+     treats win/loss as the player's), whichever side the human played. */
   useEffect(() => {
     if (!over || recordedRef.current) return;
     recordedRef.current = true;
-    const result = over.winner === "blue" ? "win" : "loss";
+    const result = over.winner === humanColor ? "win" : "loss";
     recordCgGameEvent("finish", { result, level });
     if (!user) return;
     recordCgGameResult(result, over.reason, level, plies, startPos, labels)
@@ -144,40 +172,42 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
     setLabels((prev) => [...prev, label]);
     setLastFlips({ ganh: applied.ganhFlips, chet: applied.chetFlips, move });
     setSelected(null);
-    const st = gameStatus(applied.board, color === "blue" ? "red" : "blue");
+    setHintMove(null);
+    const st = gameStatus(applied.board, other(color));
     if (st.over && st.winner) {
       setOver({ winner: st.winner, reason: st.reason ?? "flipped-all" });
-      if (st.winner === "blue") { playWin(); burstConfetti(); }
+      if (st.winner === humanColor) { playWin(); burstConfetti(); }
       else playLose();
     }
   };
 
-  /* Computer (Red) replies after a short, readable pause. */
+  /* Computer replies after a short, readable pause. */
   useEffect(() => {
-    if (turn !== "red" || over) return;
+    if (turn !== aiColor || over) return;
     setThinking(true);
     const timer = setTimeout(() => {
-      const res = findBestMove(board, "red", level, seenMap());
+      const res = findBestMove(board, aiColor, level, seenMap());
       setThinking(false);
-      if (res) doMove(res.move, "red");
+      if (res) doMove(res.move, aiColor);
       else {
-        setOver({ winner: "blue", reason: "no-moves" });
+        setOver({ winner: humanColor, reason: "no-moves" });
         playWin();
         burstConfetti();
       }
     }, 550);
     return () => { clearTimeout(timer); setThinking(false); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [turn, over, board, level]);
+  }, [turn, over, board, level, aiColor]);
 
   const onPoint = (i: number) => {
     if (!humanTurn || thinking) return;
+    setHintMove(null);
     if (selected !== null && targets.includes(i)) {
       const move = legal.find((m) => m.from === selected && m.to === i);
-      if (move) doMove(move, "blue");
+      if (move) doMove(move, humanColor);
       return;
     }
-    if (board[i] === "blue" && selectable.has(i)) {
+    if (board[i] === humanColor && selectable.has(i)) {
       playSelect();
       setSelected(i === selected ? null : i);
     } else {
@@ -192,32 +222,82 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
 
   const undo = () => {
     if (plies === 0 || thinking) return;
-    const drop = turn === "blue" ? Math.min(2, plies) : 1;
+    const drop = turn === humanColor ? Math.min(2, plies) : 1;
     setBoards((prev) => prev.slice(0, prev.length - drop));
     setLabels((prev) => prev.slice(0, prev.length - drop));
     setSelected(null);
     setOver(null);
     setLastFlips(null);
+    setHintMove(null);
     recordedRef.current = false;
   };
 
+  const hint = () => {
+    if (!humanTurn || thinking || hintThinking) return;
+    setHintThinking(true);
+    setTimeout(() => {
+      const res = findBestMove(board, humanColor, Math.max(level, 8), seenMap());
+      setHintThinking(false);
+      if (res) {
+        setHintMove(res.move);
+        setSelected(res.move.from);
+        playSelect();
+      }
+    }, 30);
+  };
+
+  /* Publish the quick-bar actions for the shell header. */
+  useEffect(() => {
+    actionsRef.current = {
+      undo,
+      canUndo: plies > 0 && !thinking,
+      swapSides: onSwapSides,
+      canSwap: !thinking && !over,
+      hint,
+      canHint: humanTurn && !thinking && !hintThinking,
+      hintThinking,
+      newGame,
+    };
+    notifyActions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plies, thinking, over, humanTurn, hintThinking, humanColor, board]);
+
+  const hintLabel = hintMove ? moveLabel(hintMove, applyMove(board, hintMove, humanColor)) : null;
+
   const overText = over
-    ? over.winner === "blue"
-      ? `${String(s.youWin)} ${over.reason === "no-moves" ? String(s.winNoMoves) : String(s.winFlippedAll)}`
-      : `${String(s.youLose)} ${over.reason === "resign" ? String(s.resigned) : over.reason === "no-moves" ? String(s.loseNoMoves) : String(s.loseFlippedAll)}`
+    ? over.winner === humanColor
+      ? `${String(s.youWin)} ${over.reason === "no-moves"
+          ? String(humanColor === "blue" ? s.winNoMoves : s.winNoMovesRed)
+          : String(humanColor === "blue" ? s.winFlippedAll : s.winFlippedAllRed)}`
+      : `${String(s.youLose)} ${over.reason === "resign" ? String(s.resigned) : over.reason === "no-moves" ? String(s.loseNoMoves) : String(humanColor === "blue" ? s.loseFlippedAll : s.loseFlippedAllRed)}`
     : null;
+
+  /* Display transform: the human's pieces are always at the bottom. */
+  const flip = humanColor === "red";
+  const dispBoard = flip ? board.map((_, i) => board[rot(i)]) : board;
+  const dispSelected = selected === null ? null : flip ? rot(selected) : selected;
+  const dispTargets = flip ? targets.map(rot) : targets;
+  const dispLastMove = lastFlips?.move
+    ? flip
+      ? { from: rot(lastFlips.move.from), to: rot(lastFlips.move.to) }
+      : lastFlips.move
+    : null;
+  const dispFlipped = lastFlips
+    ? [...lastFlips.ganh, ...lastFlips.chet].map((i) => (flip ? rot(i) : i))
+    : [];
+  const onDisplayPoint = (di: number) => onPoint(flip ? rot(di) : di);
 
   return (
     <div className="cg-layout">
         <div className="cg-board-area">
           <div className="cg-board-fit">
             <Board
-              board={board}
-              selected={selected}
-              targets={targets}
-              lastMove={lastFlips?.move ?? null}
-              flipped={lastFlips ? [...lastFlips.ganh, ...lastFlips.chet] : []}
-              onPoint={onPoint}
+              board={dispBoard}
+              selected={dispSelected}
+              targets={dispTargets}
+              lastMove={dispLastMove}
+              flipped={dispFlipped}
+              onPoint={onDisplayPoint}
             />
           </div>
         </div>
@@ -225,10 +305,10 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
           <div className="cg-status" role="status">
             {over ? (
               <strong>{overText}</strong>
-            ) : thinking ? (
-              <span><span className="cg-turn-dot red" /> {String(s.computerTurn)}</span>
+            ) : turn === aiColor ? (
+              <span><span className={`cg-turn-dot ${aiColor}`} /> {String(aiColor === "red" ? s.computerTurn : s.computerTurnBlue)}</span>
             ) : (
-              <span><span className="cg-turn-dot blue" /> {String(s.yourTurn)}</span>
+              <span><span className={`cg-turn-dot ${humanColor}`} /> {String(humanColor === "blue" ? s.yourTurn : s.yourTurnAsRed)}</span>
             )}
           </div>
           {over && xpToast !== null && (
@@ -239,38 +319,8 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
               <button className="cg-btn small" onClick={onLogin}>{String(s.login)}</button>
             </p>
           )}
-          {humanTurn && forced && <p className="cg-hint">⚠️ {String(s.forcedGanh)}</p>}
-          {plies === 0 && !over && <p className="cg-hint">{String(s.startHint)}</p>}
-          {lastFlips && (lastFlips.ganh.length > 0 || lastFlips.chet.length > 0) && (
-            <p className="cg-hint">
-              {lastFlips.ganh.length > 0 && <>⚔️ {String(s.ganh)} ×{lastFlips.ganh.length} </>}
-              {lastFlips.chet.length > 0 && <>🪤 {String(s.chet)} ×{lastFlips.chet.length}</>}
-            </p>
-          )}
-          <div className="cg-stat-cards">
-            <div className="cg-stat-card">🔵 {String(s.bluePieces)}: <strong>{blueCount}</strong></div>
-            <div className="cg-stat-card">🔴 {String(s.redPieces)}: <strong>{redCount}</strong></div>
-          </div>
-          <label className="cg-field">
-            {String(s.level)}
-            <select
-              className="cg-select"
-              value={level}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setLevel(v);
-                try { localStorage.setItem(LEVEL_KEY, String(v)); } catch { /* noop */ }
-              }}
-            >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </select>
-          </label>
-          <div className="cg-buttons">
-            <button className="cg-btn cg-btn-primary" onClick={newGame}>{String(s.newGame)}</button>
-            <button className="cg-btn" onClick={undo} disabled={plies === 0 || thinking}>{String(s.undo)}</button>
-            {over && (
+          {over && (
+            <div className="cg-buttons">
               <button
                 className="cg-btn"
                 onClick={async () => {
@@ -290,21 +340,21 @@ export default function PlayView({ lang, custom, onLogin }: Props) {
               >
                 {String(s.share)}
               </button>
-            )}
-            {!over && (
-              confirmResign ? (
-                <>
-                  <span>{String(s.resignConfirm)}</span>
-                  <button className="cg-btn cg-btn-danger" onClick={() => { setOver({ winner: "red", reason: "resign" }); playLose(); setConfirmResign(false); }}>
-                    {String(s.yes)}
-                  </button>
-                  <button className="cg-btn" onClick={() => setConfirmResign(false)}>{String(s.cancel)}</button>
-                </>
-              ) : (
-                <button className="cg-btn" onClick={() => setConfirmResign(true)}>{String(s.resign)}</button>
-              )
-            )}
-          </div>
+            </div>
+          )}
+          {humanTurn && forced && <p className="cg-hint">⚠️ {String(s.forcedGanh)}</p>}
+          {plies === 0 && !over && (
+            <p className="cg-hint">{String(humanColor === "blue" ? s.startHint : s.startHintRed)}</p>
+          )}
+          {hintMove && hintLabel && !over && (
+            <p className="cg-hint">{String(s.hint)}: <strong>{hintLabel}</strong></p>
+          )}
+          {lastFlips && (lastFlips.ganh.length > 0 || lastFlips.chet.length > 0) && (
+            <p className="cg-hint">
+              {lastFlips.ganh.length > 0 && <>⚔️ {String(s.ganh)} ×{lastFlips.ganh.length} </>}
+              {lastFlips.chet.length > 0 && <>🪤 {String(s.chet)} ×{lastFlips.chet.length}</>}
+            </p>
+          )}
           <h3>{String(s.moveList)}</h3>
           <div className="cg-moves" ref={movesRef}>
             {labels.length === 0 && <p className="cg-muted">{String(s.noMovesYet)}</p>}

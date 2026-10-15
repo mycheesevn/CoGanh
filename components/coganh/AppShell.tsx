@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
-import PlayView from "./PlayView";
+import PlayView, { type PlayActions } from "./PlayView";
 import HowToView from "./HowToView";
 import SetupView, { type SetupGame } from "./SetupView";
 import CvCView from "./CvCView";
@@ -18,7 +18,8 @@ import PuzzleView from "./PuzzleView";
 import { fetchNotifications } from "@/lib/supabase/notifications";
 import { AuthModal } from "./AuthModal";
 import { ProfileModal } from "./ProfileModal";
-import { STR, loadLang, saveLang, type Lang } from "@/lib/coganh/i18n";
+import { STR, loadLang, saveLang, levelName, type Lang } from "@/lib/coganh/i18n";
+import type { Color } from "@/lib/coganh/engine";
 import { isMuted, setMuted } from "@/lib/coganh/sound";
 import { AuthProvider, useAuth } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/client";
@@ -42,6 +43,20 @@ function Shell() {
   const [menu, setMenu] = useState(false);
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
   const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"in" | "up">("in");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [level, setLevelState] = useState<number>(() => {
+    try { return Math.min(12, Math.max(1, Number(localStorage.getItem("cg-level")) || 5)); }
+    catch { return 5; }
+  });
+  const [humanColor, setHumanColorState] = useState<Color>(() => {
+    try { return localStorage.getItem("cg-side") === "red" ? "red" : "blue"; }
+    catch { return "blue"; }
+  });
+  const [puzzleTab, setPuzzleTab] = useState<"daily" | "community">("daily");
+  const actionsRef = useRef<PlayActions | null>(null);
+  const [actionsVersion, setActionsVersion] = useState(0);
+  const notifyActions = () => setActionsVersion((v) => v + 1);
   const [profileOpen, setProfileOpen] = useState(false);
   const [customGame, setCustomGame] = useState<(SetupGame & { nonce: number }) | null>(null);
   const [cvcGame, setCvcGame] = useState<SetupGame | null>(null);
@@ -161,12 +176,33 @@ function Shell() {
     setDrawer(false);
     setMenu(false);
   };
-  const openLogin = () => {
+  const openAuth = (m: "in" | "up") => {
+    setAuthMode(m);
     setMenu(false);
     setDrawer(false);
     setAuthOpen(true);
   };
+  const openLogin = () => openAuth("in");
+  const setLevel = (v: number) => {
+    setLevelState(v);
+    try { localStorage.setItem("cg-level", String(v)); } catch { /* noop */ }
+  };
+  const applySide = (c: Color) => {
+    setHumanColorState(c);
+    try { localStorage.setItem("cg-side", c); } catch { /* noop */ }
+    setCustomGame(null);
+  };
+  const swapSides = () => applySide(humanColor === "blue" ? "red" : "blue");
+  const toggleMute = () => {
+    const m = !muted;
+    setMuted(m);
+    setMutedState(m);
+  };
   const startCustom = (g: SetupGame) => {
+    // Custom positions are played as Blue (the setup editor picks the side
+    // to move, not the human's colour).
+    setHumanColorState("blue");
+    try { localStorage.setItem("cg-side", "blue"); } catch { /* noop */ }
     setCustomGame({ ...g, nonce: Date.now() });
     setMode("play");
   };
@@ -175,20 +211,43 @@ function Shell() {
     setMode("cvc");
   };
 
-  const modes: { id: Mode; icon: string; label: string }[] = [
-    { id: "play", icon: "🎮", label: String(s.playVsComputer) },
-    { id: "setup", icon: "🧩", label: String(s.setupTitleCg) },
-    { id: "rooms", icon: "🏠", label: String(s.room) },
-    { id: "friends", icon: "👥", label: String(s.friends) },
-    { id: "corr", icon: "📬", label: String(s.corrTitle) },
-    { id: "library", icon: "📚", label: String(s.bikip) },
-    { id: "puzzle", icon: "🧩", label: String(s.puzzle) },
-    { id: "history", icon: "📜", label: String(s.history) },
-    { id: "leaderboard", icon: "🏆", label: String(s.leaderboard) },
-    { id: "stats", icon: "📊", label: String(s.stats) },
-    { id: "checkin", icon: "📅", label: String(s.checkin) },
-    { id: "howto", icon: "📖", label: String(s.howTo) },
+  /* Drawer mode list — PacClone's order (§4 of the shell spec): play,
+     puzzle, library, setup, history, leaderboard, rooms, corr, checkin,
+     community. CG extras keep their closest slots: stats rides with the
+     leaderboard, howto closes the list. Friends and Notifications are NOT
+     in the drawer — they live in the avatar menu. */
+  const drawerItems: { key: string; label: string; active: boolean; onPick: () => void }[] = [
+    { key: "play", label: String(s.playVsComputer), active: mode === "play", onPick: () => pickMode("play") },
+    { key: "puzzle", label: String(s.puzzle), active: mode === "puzzle" && puzzleTab === "daily", onPick: () => { setPuzzleTab("daily"); pickMode("puzzle"); } },
+    { key: "library", label: String(s.bikip), active: mode === "library", onPick: () => pickMode("library") },
+    { key: "setup", label: String(s.setupTitleCg), active: mode === "setup", onPick: () => pickMode("setup") },
+    { key: "history", label: String(s.history), active: mode === "history", onPick: () => pickMode("history") },
+    { key: "leaderboard", label: String(s.leaderboard), active: mode === "leaderboard", onPick: () => pickMode("leaderboard") },
+    { key: "stats", label: `📊 ${String(s.stats)}`, active: mode === "stats", onPick: () => pickMode("stats") },
+    { key: "rooms", label: String(s.room), active: mode === "rooms", onPick: () => pickMode("rooms") },
+    { key: "corr", label: `✉️ ${String(s.corrTitle)}`, active: mode === "corr", onPick: () => pickMode("corr") },
+    { key: "checkin", label: `📅 ${String(s.checkin)}`, active: mode === "checkin", onPick: () => pickMode("checkin") },
+    { key: "community", label: String(s.community), active: mode === "puzzle" && puzzleTab === "community", onPick: () => { setPuzzleTab("community"); pickMode("puzzle"); } },
+    { key: "howto", label: `📖 ${String(s.howTo)}`, active: mode === "howto", onPick: () => pickMode("howto") },
   ];
+
+  const actions = actionsRef.current;
+  void actionsVersion; // re-read actionsRef after PlayView publishes its actions
+
+  /* Settings block shared by both identity menus (PacClone §5): language
+     segmented toggle + sound toggle (+ push settings when logged in). */
+  const renderSettings = (includePush: boolean) => (
+    <div className="cg-account-menu-settings">
+      <div className="cg-seg" role="group" aria-label={String(s.language)}>
+        <button type="button" className={lang === "vi" ? "active" : ""} onClick={() => pickLang("vi")}>Tiếng Việt</button>
+        <button type="button" className={lang === "en" ? "active" : ""} onClick={() => pickLang("en")}>English</button>
+      </div>
+      <button type="button" className="cg-btn" onClick={toggleMute}>
+        {muted ? "🔇" : "🔊"} {String(s.sound)}
+      </button>
+      {includePush && <PushSettings lang={lang} />}
+    </div>
+  );
 
   return (
     <div className="cg-page">
@@ -242,11 +301,11 @@ function Shell() {
                         </span>
                         <div className="cg-account-menu-id">
                           <strong>{displayName}</strong>
-                          <span className="cg-muted">{profile?.username ? `@${profile.username}` : user.email}</span>
+                          <span className="cg-muted">{user.email}</span>
                         </div>
                       </div>
                       <button className="cg-btn" onClick={() => { setMenu(false); setProfileOpen(true); }}>
-                        👤 {String(s.profile)}
+                        {String(s.profile)}
                       </button>
                       <button className="cg-btn" onClick={() => pickMode("inbox")}>
                         {String(s.notifications)}
@@ -254,48 +313,34 @@ function Shell() {
                           <span className="cg-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
                         )}
                       </button>
-                      <button className="cg-btn" onClick={() => pickMode("checkin")}>
-                        📅 {String(s.checkin)}
+                      <button className="cg-btn" onClick={() => pickMode("friends")}>
+                        {String(s.friends)}
                       </button>
-                      <PushSettings lang={lang} />
+                      <button
+                        className="cg-btn"
+                        onClick={() => setSettingsOpen((o) => !o)}
+                        aria-expanded={settingsOpen}
+                      >
+                        ⚙️ {String(s.settings)} {settingsOpen ? "▾" : "▸"}
+                      </button>
+                      {settingsOpen && renderSettings(true)}
+                      <button
+                        className="cg-btn"
+                        onClick={async () => { setMenu(false); await signOut(); }}
+                      >
+                        🚪 {String(s.logout)}
+                      </button>
                     </>
                   ) : (
-                    <button className="cg-btn cg-btn-primary" onClick={openLogin}>
-                      🔑 {String(s.login)}
-                    </button>
-                  )}
-                  <div className="cg-account-menu-settings">
-                    <label>
-                      {String(s.language)}
-                      <select
-                        className="cg-select"
-                        value={lang}
-                        onChange={(e) => pickLang(e.target.value as Lang)}
-                      >
-                        <option value="vi">Tiếng Việt</option>
-                        <option value="en">English</option>
-                      </select>
-                    </label>
-                    <label>
-                      {String(s.sound)}
-                      <input
-                        type="checkbox"
-                        checked={!muted}
-                        onChange={(e) => {
-                          const m = !e.target.checked;
-                          setMuted(m);
-                          setMutedState(m);
-                        }}
-                      />
-                    </label>
-                  </div>
-                  {user && (
-                    <button
-                      className="cg-btn"
-                      onClick={async () => { setMenu(false); await signOut(); }}
-                    >
-                      🚪 {String(s.logout)}
-                    </button>
+                    <>
+                      {renderSettings(false)}
+                      <button className="cg-btn cg-btn-primary" onClick={() => openAuth("in")}>
+                        🔑 {String(s.login)}
+                      </button>
+                      <button className="cg-btn" onClick={() => openAuth("up")}>
+                        {String(s.authSignup)}
+                      </button>
+                    </>
                   )}
                 </div>
               </>
@@ -303,6 +348,23 @@ function Shell() {
             </div>
           </div>
         </div>
+        {mode === "play" && (
+          <div className="cg-quick">
+            <button type="button" className="cg-btn" disabled={!actions?.canUndo} onClick={() => actions?.undo()}>
+              {String(s.undo)}
+            </button>
+            <button type="button" className="cg-btn" disabled={!actions?.canSwap} onClick={() => actions?.swapSides()}>
+              {String(s.switchSides)}
+            </button>
+            <button type="button" className="cg-btn" disabled={!actions?.canHint} onClick={() => actions?.hint()}>
+              {actions?.hintThinking ? String(s.hintThinking) : String(s.hint)}
+            </button>
+            <span className="cg-quick-spacer" />
+            <button type="button" className="cg-btn cg-btn-primary" onClick={() => actions?.newGame()}>
+              {String(s.newGame)}
+            </button>
+          </div>
+        )}
       </header>
 
       {drawer && (
@@ -310,23 +372,58 @@ function Shell() {
           <div className="cg-backdrop" onClick={() => setDrawer(false)} />
           <nav className="cg-drawer" aria-label="Modes">
             <div className="cg-drawer-head">
-              <strong>{String(s.appName)}</strong>
-              <button className="cg-btn-icon" aria-label="Close" onClick={() => setDrawer(false)}>✕</button>
+              <strong>{String(s.menu)}</strong>
+              <button className="cg-btn-icon" aria-label={String(s.close)} onClick={() => setDrawer(false)}>✕</button>
             </div>
             <div className="cg-drawer-body">
-              <div className="cg-drawer-modes">
-                {modes.map((m) => (
-                  <button
-                    key={m.id}
-                    className={`cg-btn${mode === m.id ? " cg-btn-primary" : ""}`}
-                    onClick={() => pickMode(m.id)}
-                  >
-                    {m.icon} {m.label}
-                  </button>
-                ))}
-              </div>
+              <section>
+                <h2>{String(s.mode)}</h2>
+                <div className="cg-drawer-modes">
+                  {drawerItems.map((m) => (
+                    <button
+                      key={m.key}
+                      className={`cg-btn${m.active ? " cg-btn-primary" : ""}`}
+                      onClick={m.onPick}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              {mode === "play" && (
+                <section>
+                  <h2>{String(s.playSettings)}</h2>
+                  <label className="cg-field">
+                    {String(s.level)}
+                    <select
+                      className="cg-select"
+                      value={level}
+                      onChange={(e) => setLevel(Number(e.target.value))}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((l) => (
+                        <option key={l} value={l}>{levelName(lang, l)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="cg-field">
+                    {String(s.youPlay)}
+                    <select
+                      className="cg-select"
+                      value={humanColor}
+                      onChange={(e) => applySide(e.target.value as Color)}
+                    >
+                      <option value="blue">{String(s.sideBlue)}</option>
+                      <option value="red">{String(s.sideRed)}</option>
+                    </select>
+                  </label>
+                </section>
+              )}
               <div className="cg-drawer-legal">
-                <a href="/privacy">{String(s.privacy)}</a> · <a href="/terms">{String(s.terms)}</a>
+                <a href="/terms" target="_blank" rel="noreferrer">{String(s.termsOfService)}</a>
+                <span> · </span>
+                <a href="/privacy" target="_blank" rel="noreferrer">{String(s.privacyPolicy)}</a>
+                <span> · </span>
+                <a href="/data-deletion" target="_blank" rel="noreferrer">{String(s.dataDeletion)}</a>
               </div>
             </div>
           </nav>
@@ -349,7 +446,18 @@ function Shell() {
       {challengeToast && <div className="cg-challenge-toast">{challengeToast}</div>}
       {user && <PushNudge lang={lang} />}
 
-        {mode === "play" && <PlayView lang={lang} custom={customGame} onLogin={openLogin} />}
+        {mode === "play" && (
+          <PlayView
+            lang={lang}
+            level={level}
+            humanColor={humanColor}
+            custom={customGame}
+            onLogin={openLogin}
+            onSwapSides={swapSides}
+            actionsRef={actionsRef}
+            notifyActions={notifyActions}
+          />
+        )}
         {mode === "setup" && (
           <SetupView lang={lang} user={user} onLogin={openLogin} onPlay={startCustom} onCvC={startCvC} />
         )}
@@ -392,7 +500,7 @@ function Shell() {
         )}
         {mode === "inbox" && <NotificationsView lang={lang} onChanged={refreshUnread} />}
         {mode === "library" && <LibraryView lang={lang} userId={userId} />}
-        {mode === "puzzle" && <PuzzleView lang={lang} userId={userId} onLogin={openLogin} />}
+        {mode === "puzzle" && <PuzzleView lang={lang} userId={userId} onLogin={openLogin} initialTab={puzzleTab} />}
         {mode === "history" && <HistoryView lang={lang} user={user} onLogin={openLogin} />}
         {mode === "leaderboard" && <LeaderboardView lang={lang} myUserId={user?.id ?? null} />}
         {mode === "stats" && <StatsView lang={lang} />}
@@ -400,7 +508,7 @@ function Shell() {
         {mode === "howto" && <HowToView lang={lang} />}
       <footer className="cg-footer">{String(s.footer)}</footer>
 
-      <AuthModal lang={lang} open={authOpen} onClose={() => setAuthOpen(false)} />
+      <AuthModal lang={lang} open={authOpen} onClose={() => setAuthOpen(false)} initialMode={authMode} />
       <ProfileModal lang={lang} open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );

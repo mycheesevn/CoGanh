@@ -921,11 +921,6 @@ const en: Record<StrKey, string | string[]> = {
 
 export const STR: Record<Lang, Record<StrKey, string | string[]>> = { vi, en };
 
-/** v1 compatibility shim (the play view migrates to STR in the same
- *  release; kept so intermediate trees always compile). */
-export const STRINGS = STR;
-export type Strings = Record<StrKey, string | string[]>;
-
 const KEY = "cg-lang";
 
 export function loadLang(): Lang {

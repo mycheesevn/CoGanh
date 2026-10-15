@@ -77,11 +77,11 @@ export default function Board({ board, selected, targets, lastMove, flipped, onP
         const isRed = cell === "red";
         return (
           <g key={`p${i}`} className={flipSet.has(i) ? "cg-piece-flip" : undefined}>
-            <circle cx={px(i)} cy={py(i)} r={78} fill={isRed ? "#b02a20" : "#1c4f8a"} />
-            <circle cx={px(i)} cy={py(i)} r={68} fill={isRed ? "#cf3a30" : "#2569b8"} />
-            <circle cx={px(i)} cy={py(i)} r={44} fill="none" stroke={isRed ? "#e88a80" : "#8ab6e8"} strokeWidth={5} />
+            <circle cx={px(i)} cy={py(i)} r={39} fill={isRed ? "#b02a20" : "#1c4f8a"} />
+            <circle cx={px(i)} cy={py(i)} r={34} fill={isRed ? "#cf3a30" : "#2569b8"} />
+            <circle cx={px(i)} cy={py(i)} r={22} fill="none" stroke={isRed ? "#e88a80" : "#8ab6e8"} strokeWidth={4} />
             {selected === i && (
-              <circle cx={px(i)} cy={py(i)} r={88} fill="none" stroke="#ffb52e" strokeWidth={9} />
+              <circle cx={px(i)} cy={py(i)} r={50} fill="none" stroke="#ffb52e" strokeWidth={8} />
             )}
           </g>
         );

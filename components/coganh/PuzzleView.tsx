@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Board from "./Board";
+import EditorTools, { editorTap, type EditorTool } from "./EditorTools";
 import { STR, type Lang } from "@/lib/coganh/i18n";
 import {
   boardFromString, boardToString, legalMoves, applyMove, countPieces,
@@ -396,8 +397,9 @@ function CommunityPuzzles({ lang, userId, onLogin, tabsNode }: Props & { tabsNod
   );
 }
 
-/** Create form: tap-cycle editor (empty → blue → red); the engine must
- *  confirm a win-in-1 exists for the chosen side before posting. */
+/** Create form: tool editor (place a colour / erase / move — shared
+ *  EditorTools); the engine must confirm a win-in-1 exists for the
+ *  chosen side before posting. */
 function CreatePuzzle({ lang, userId, onCancel, onCreated }: {
   lang: Lang;
   userId: string | null;
@@ -411,12 +413,20 @@ function CreatePuzzle({ lang, userId, onCancel, onCreated }: {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const cycle = (i: number) => {
-    setCells((prev) => {
-      const next = prev.slice();
-      next[i] = next[i] === null ? "blue" : next[i] === "blue" ? "red" : null;
-      return next;
-    });
+  // The form starts from an empty board, so placing Blue is the
+  // sensible default tool.
+  const [tool, setTool] = useState<EditorTool>({ kind: "place", color: "blue" });
+  const [lifted, setLifted] = useState<number | null>(null);
+
+  const changeTool = (t: EditorTool) => {
+    setTool(t);
+    setLifted(null);
+  };
+
+  const onPoint = (i: number) => {
+    const r = editorTap(cells, i, tool, lifted);
+    setCells(r.cells);
+    setLifted(r.lifted);
   };
 
   const submit = async () => {
@@ -449,7 +459,7 @@ function CreatePuzzle({ lang, userId, onCancel, onCreated }: {
     <div className="cg-layout">
       <div className="cg-board-area">
         <div className="cg-board-fit">
-          <Board board={cells as BoardT} selected={null} targets={[]} lastMove={null} flipped={[]} onPoint={cycle} />
+          <Board board={cells as BoardT} selected={tool.kind === "move" ? lifted : null} targets={[]} lastMove={null} flipped={[]} onPoint={onPoint} />
         </div>
       </div>
       <aside className="cg-panel">
@@ -467,10 +477,11 @@ function CreatePuzzle({ lang, userId, onCancel, onCreated }: {
             🔴 {String(s.redSide)}
           </button>
         </div>
+        <EditorTools lang={lang} tool={tool} onChange={changeTool} />
         <p className="cg-hint">
           {lang === "vi"
-            ? "Chạm ô để đổi: trống → xanh → đỏ → trống. Hệ thống chỉ đăng khi bên đi có một nước thắng ngay."
-            : "Tap a point to cycle: empty → blue → red → empty. The position posts only if the side to move wins in one."}
+            ? "Hệ thống chỉ đăng khi bên đi có một nước thắng ngay."
+            : "The position posts only if the side to move wins in one."}
         </p>
         {err && <p className="cg-error">{err}</p>}
         <div className="cg-row">

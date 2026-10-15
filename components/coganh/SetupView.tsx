@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import Board from "./Board";
+import EditorTools, { editorTap, type EditorTool } from "./EditorTools";
 import { Pagination, usePagination } from "./Pagination";
 import {
   boardFromString, boardToString, countPieces, initialBoard,
@@ -73,12 +74,18 @@ export default function SetupView({ lang, user, onLogin, onPlay, onCvC }: Props)
   };
   useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [user]);
 
-  const cycle = (i: number) => {
-    setCells((prev) => {
-      const next = prev.slice();
-      next[i] = next[i] === null ? "blue" : next[i] === "blue" ? "red" : null;
-      return next;
-    });
+  const [tool, setTool] = useState<EditorTool>({ kind: "move" });
+  const [lifted, setLifted] = useState<number | null>(null);
+
+  const changeTool = (t: EditorTool) => {
+    setTool(t);
+    setLifted(null);
+  };
+
+  const onPoint = (i: number) => {
+    const r = editorTap(cells, i, tool, lifted);
+    setCells(r.cells as BoardState);
+    setLifted(r.lifted);
   };
 
   const save = async () => {
@@ -128,22 +135,19 @@ export default function SetupView({ lang, user, onLogin, onPlay, onCvC }: Props)
   const load = (entry: SavedSetup) => {
     setCells(boardFromString(entry.position));
     setTurn(entry.side_to_move);
+    setLifted(null);
   };
 
   return (
     <div className="cg-layout">
         <div className="cg-board-area">
           <div className="cg-board-fit">
-            <Board board={cells} selected={null} targets={[]} lastMove={null} flipped={[]} onPoint={cycle} />
+            <Board board={cells} selected={tool.kind === "move" ? lifted : null} targets={[]} lastMove={null} flipped={[]} onPoint={onPoint} />
           </div>
         </div>
         <aside className="cg-panel">
           <h2>🧩 {String(s.setupTitleCg)}</h2>
-          <p className="cg-hint">
-            {lang === "vi"
-              ? "Chạm vào một điểm để đổi: trống → Xanh → Đỏ → trống."
-              : "Tap a point to cycle: empty → Blue → Red → empty."}
-          </p>
+          <EditorTools lang={lang} tool={tool} onChange={changeTool} />
           <div className="cg-stat-cards">
             <div className="cg-stat-card">🔵 {String(s.blueSide)}: <strong>{blues}</strong></div>
             <div className="cg-stat-card">🔴 {String(s.redSide)}: <strong>{reds}</strong></div>
@@ -162,8 +166,8 @@ export default function SetupView({ lang, user, onLogin, onPlay, onCvC }: Props)
             <button className="cg-btn" disabled={!valid} onClick={() => onCvC({ position, turn })}>
               🤖 {String(s.computerVsComputer)}
             </button>
-            <button className="cg-btn" onClick={() => setCells(Array(25).fill(null))}>{String(s.clearBoard)}</button>
-            <button className="cg-btn" onClick={() => { setCells(initialBoard()); setTurn("blue"); }}>
+            <button className="cg-btn" onClick={() => { setCells(Array(25).fill(null)); setLifted(null); }}>{String(s.clearBoard)}</button>
+            <button className="cg-btn" onClick={() => { setCells(initialBoard()); setTurn("blue"); setLifted(null); }}>
               {String(s.resetBoard)}
             </button>
           </div>

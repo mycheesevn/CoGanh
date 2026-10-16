@@ -28,6 +28,7 @@ import { fireEvent } from "@/lib/supabase/notify";
 import {
   fetchPendingChallenges,
   respondChallenge,
+  sendChallenge,
   subscribeChallenges,
   type Challenge,
 } from "@/lib/supabase/friends";
@@ -67,6 +68,11 @@ function Shell() {
   const [challengeToast, setChallengeToast] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [corrDeepLink, setCorrDeepLink] = useState<string | null>(null);
+  /* Hub deep link ?challenge=<handle>: an OUTGOING challenge to that player. */
+  const [hubChallengeHandle, setHubChallengeHandle] = useState<string | null>(null);
+  const [hubChallengeTarget, setHubChallengeTarget] = useState<{ id: string; name: string } | null>(null);
+  const [hubChallengeBusy, setHubChallengeBusy] = useState(false);
+  const [hubChallengeMsg, setHubChallengeMsg] = useState<string | null>(null);
   const { user, profile, cgStats, displayName, signOut } = useAuth();
   const s = STR[lang] as Record<string, string | string[]>;
   const userId = user?.id ?? null;
@@ -83,6 +89,17 @@ function Shell() {
     if (corr) {
       setCorrDeepLink(corr);
       setMode("corr");
+    }
+    // From the SynerWorlds hub (profile page / Tìm đối thủ board):
+    // ?challenge=<handle> asks to challenge that player. A 36-char UUID
+    // would be an incoming-challenge id (no such handler here) — anything
+    // else is a player handle.
+    const chl = params.get("challenge");
+    if (chl && !/^[0-9a-f-]{36}$/i.test(chl)) {
+      setHubChallengeHandle(chl.toLowerCase());
+      const u = new URL(window.location.href);
+      u.searchParams.delete("challenge");
+      window.history.replaceState({}, "", u.toString());
     }
   }, []);
 
@@ -200,6 +217,64 @@ function Shell() {
     setAuthOpen(true);
   };
   const openLogin = () => openAuth("in");
+
+  /* Hub challenge deep link: prompt login first if needed, resolve the
+   * handle to a player, then ask for confirmation before sending. */
+  useEffect(() => {
+    if (!hubChallengeHandle) return;
+    if (!userId) {
+      openLogin();
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const sb = createClient();
+      const { data } = await sb
+        .from("profiles")
+        .select("id, full_name, username")
+        .eq("handle", hubChallengeHandle)
+        .maybeSingle();
+      if (cancelled) return;
+      setHubChallengeHandle(null);
+      if (!data) {
+        setHubChallengeMsg(String(s.hubChallengeNotFound));
+        return;
+      }
+      const row = data as { id: string; full_name: string | null; username: string | null };
+      if (row.id === userId) return; // own profile link — ignore silently
+      const name = row.full_name?.trim() || row.username?.trim() || "Player";
+      setHubChallengeTarget({ id: row.id, name });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubChallengeHandle, userId]);
+
+  const doHubChallenge = async () => {
+    if (!hubChallengeTarget || hubChallengeBusy) return;
+    setHubChallengeBusy(true);
+    setHubChallengeMsg(null);
+    try {
+      const ch = await sendChallenge(hubChallengeTarget.id, displayName);
+      setHubChallengeTarget(null);
+      // Same entry path as ?room=: the room view joins by invite code.
+      if (ch.room_code) {
+        setInviteCode(ch.room_code.toUpperCase());
+        setMode("rooms");
+      }
+    } catch {
+      setHubChallengeMsg(String(s.hubChallengeError));
+    } finally {
+      setHubChallengeBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hubChallengeMsg) return;
+    const t = setTimeout(() => setHubChallengeMsg(null), 4500);
+    return () => clearTimeout(t);
+  }, [hubChallengeMsg]);
   const setLevel = (v: number) => {
     setLevelState(v);
     try { localStorage.setItem("cg-level", String(v)); } catch { /* noop */ }
@@ -461,6 +536,39 @@ function Shell() {
         </div>
       )}
       {challengeToast && <div className="cg-challenge-toast">{challengeToast}</div>}
+      {hubChallengeTarget && (
+        <div className="cg-modal-root" onClick={() => !hubChallengeBusy && setHubChallengeTarget(null)}>
+          <div className="cg-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{String(s.hubChallengeTitle).replace("{name}", hubChallengeTarget.name)}</h2>
+            {hubChallengeMsg && (
+              <p style={{ color: "var(--red, #d4382c)", margin: "0 0 8px" }} role="alert">
+                {hubChallengeMsg}
+              </p>
+            )}
+            <div className="cg-modal-actions">
+              <button
+                type="button"
+                className="cg-btn cg-btn-primary"
+                disabled={hubChallengeBusy}
+                onClick={() => void doHubChallenge()}
+              >
+                {String(s.hubChallengeSend)}
+              </button>
+              <button
+                type="button"
+                className="cg-btn"
+                disabled={hubChallengeBusy}
+                onClick={() => setHubChallengeTarget(null)}
+              >
+                {String(s.hubChallengeLater)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {hubChallengeMsg && !hubChallengeTarget && (
+        <div className="cg-challenge-toast">{hubChallengeMsg}</div>
+      )}
       {user && <PushNudge lang={lang} />}
 
         {mode === "play" && (

@@ -73,6 +73,8 @@ function Shell() {
   const [hubChallengeTarget, setHubChallengeTarget] = useState<{ id: string; name: string } | null>(null);
   const [hubChallengeBusy, setHubChallengeBusy] = useState(false);
   const [hubChallengeMsg, setHubChallengeMsg] = useState<string | null>(null);
+  /** SynerWorlds one-tap login hand-off: ?sso=<magic-link token hash>. */
+  const [ssoToken, setSsoToken] = useState<string | null>(null);
   const { user, profile, cgStats, displayName, signOut } = useAuth();
   const s = STR[lang] as Record<string, string | string[]>;
   const userId = user?.id ?? null;
@@ -99,6 +101,15 @@ function Shell() {
       setHubChallengeHandle(chl.toLowerCase());
       const u = new URL(window.location.href);
       u.searchParams.delete("challenge");
+      window.history.replaceState({}, "", u.toString());
+    }
+    // From the SynerWorlds hub: ?sso=<magic-link token hash> is a one-time
+    // login hand-off. Single-use — strip it so a refresh never retries.
+    const sso = params.get("sso");
+    if (sso) {
+      setSsoToken(sso);
+      const u = new URL(window.location.href);
+      u.searchParams.delete("sso");
       window.history.replaceState({}, "", u.toString());
     }
   }, []);
@@ -275,6 +286,28 @@ function Shell() {
     const t = setTimeout(() => setHubChallengeMsg(null), 4500);
     return () => clearTimeout(t);
   }, [hubChallengeMsg]);
+
+  // Hub one-tap login: redeem the one-time token; the auth listener picks
+  // the session up from there. Failures are said out loud (toast), never
+  // swallowed — the player can still sign in manually.
+  useEffect(() => {
+    if (!ssoToken) return;
+    let cancelled = false;
+    (async () => {
+      const sb = createClient();
+      const { error } = await sb.auth.verifyOtp({
+        token_hash: ssoToken,
+        type: "magiclink",
+      });
+      if (cancelled) return;
+      setSsoToken(null);
+      if (error) setHubChallengeMsg(String(s.ssoError));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ssoToken]);
   const setLevel = (v: number) => {
     setLevelState(v);
     try { localStorage.setItem("cg-level", String(v)); } catch { /* noop */ }

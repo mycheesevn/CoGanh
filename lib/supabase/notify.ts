@@ -7,7 +7,7 @@
 import { notifyPushTrigger } from "@/lib/push/client";
 
 export async function fireEvent(
-  kind: "challenge" | "turn" | "corr" | "corr_end" | "challenge_declined",
+  kind: "challenge" | "turn" | "corr" | "corr_end" | "challenge_declined" | "challenge_accepted",
   payload: Record<string, string>
 ): Promise<void> {
   try {
@@ -16,6 +16,11 @@ export async function fireEvent(
     } else if (kind === "challenge_declined" && payload.challenge) {
       await notifyPushTrigger({
         kind: "challenge_declined",
+        challengeId: payload.challenge,
+      });
+    } else if (kind === "challenge_accepted" && payload.challenge) {
+      await notifyPushTrigger({
+        kind: "challenge_accepted",
         challengeId: payload.challenge,
       });
     } else if (kind === "turn" && payload.match) {

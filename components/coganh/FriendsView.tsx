@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { roomErrorKey } from "@/lib/supabase/rooms";
+import { fireEvent } from "@/lib/supabase/notify";
 import { roomErrText } from "./RoomView";
 import { STR, type Lang } from "@/lib/coganh/i18n";
 import { levelForXp } from "@/lib/coganh/levels";
@@ -166,6 +167,7 @@ export default function FriendsView({
     setActionError("");
     try {
       await respondChallenge(c.id, false);
+      void fireEvent("challenge_declined", { challenge: c.id });
       setIncoming((prev) => prev.filter((x) => x.id !== c.id));
     } catch {
       setActionError(String(s.friendsActionError));

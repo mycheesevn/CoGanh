@@ -98,6 +98,9 @@ export async function POST(req: Request) {
     if (body.kind === "challenge_declined" && body.challengeId) {
       return await onChallengeDeclined(uid, body.challengeId);
     }
+    if (body.kind === "challenge_accepted" && body.challengeId) {
+      return await onChallengeAccepted(uid, body.challengeId);
+    }
     if (body.kind === "turn" && body.matchId) {
       return await onTurn(uid, body.matchId);
     }
@@ -191,6 +194,47 @@ async function onChallengeDeclined(declinerId: string, challengeId: string) {
     title: "😞 Thách đấu bị từ chối",
     body,
     url: "/",
+    ref_id: ch.id,
+  });
+  return NextResponse.json({ ok: true, sent });
+}
+
+async function onChallengeAccepted(accepterId: string, challengeId: string) {
+  const sb = service();
+  const { data: ch, error } = await sb
+    .from("cg_challenges")
+    .select("id, challenger_id, challenged_id, status, room_code")
+    .eq("id", challengeId)
+    .single();
+  if (error || !ch) throw new Error("not_found");
+  // Only the challenged player can report an acceptance, and only once.
+  if (ch.challenged_id !== accepterId) throw new Error("forbidden");
+  if (throttled(`challenge_accepted:${challengeId}`, 5 * 60 * 1000)) {
+    return NextResponse.json({ ok: true, skipped: "throttled" });
+  }
+  if (ch.status !== "accepted") throw new Error("not_accepted");
+  const { data: me } = await sb
+    .from("profiles")
+    .select("full_name, username")
+    .eq("id", accepterId)
+    .single();
+  const name = displayName(me);
+  const body = `${name} đã chấp nhận lời thách đấu của bạn — vào phòng thi đấu ngay!`;
+  // Deep link into the room: cg_join_room is idempotent for members, and
+  // the challenger created the room, so the invite flow opens it directly.
+  const url = ch.room_code ? `/?room=${ch.room_code}` : "/";
+  const { sent } = await sendPushToUser(ch.challenger_id, {
+    title: "⚔️ Thách đấu được chấp nhận!",
+    body,
+    url,
+    tag: `challenge-accepted-${ch.id}`,
+  });
+  await recordNotification(sb, {
+    user_id: ch.challenger_id,
+    kind: "challenge_accepted",
+    title: "⚔️ Thách đấu được chấp nhận!",
+    body,
+    url,
     ref_id: ch.id,
   });
   return NextResponse.json({ ok: true, sent });

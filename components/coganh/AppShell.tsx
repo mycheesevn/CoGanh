@@ -24,6 +24,7 @@ import { isMuted, setMuted } from "@/lib/coganh/sound";
 import { AuthProvider, useAuth } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/client";
 import { joinRoom, roomErrorKey } from "@/lib/supabase/rooms";
+import { fireEvent } from "@/lib/supabase/notify";
 import {
   fetchPendingChallenges,
   respondChallenge,
@@ -122,6 +123,17 @@ function Shell() {
           setChallengeToast(String(s.challengeDeclinedToast).replace("{name}", name));
           setTimeout(() => setChallengeToast(null), 5000);
         }
+      },
+      (c, name) => {
+        // My challenge was accepted: the accepter is already entering
+        // the room — bring me in too, no manual room hunt (user request).
+        if (dead) return;
+        setChallengeToast(String(s.challengeAcceptedToast).replace("{name}", name));
+        setTimeout(() => setChallengeToast(null), 5000);
+        if (c.room_id) {
+          setOpenRoomId(c.room_id);
+          setMode("rooms");
+        }
       }
     );
     return () => {
@@ -141,6 +153,10 @@ function Shell() {
       // pending (retryable) instead of being silently consumed.
       const room = await joinRoom(c.room_code);
       await respondChallenge(c.id, true).catch(() => {});
+      // Notify the challenger (push + inbox) — fired from the accepter's
+      // client because the trigger route verifies the caller IS the
+      // challenged player; the challenger may not even be online.
+      void fireEvent("challenge_accepted", { challenge: c.id });
       setOpenRoomId(room.id);
       setMode("rooms");
     } catch (e) {
@@ -162,6 +178,7 @@ function Shell() {
     setChallenge(null);
     try {
       await respondChallenge(c.id, false);
+      void fireEvent("challenge_declined", { challenge: c.id });
     } catch {
       /* ignore */
     }

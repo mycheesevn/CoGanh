@@ -263,12 +263,14 @@ export async function cancelChallenge(id: string): Promise<void> {
 
 /**
  * Live challenge events. INSERTs to me → onIncoming(row); UPDATEs of my
- * outgoing rows → onDeclined(challengedName) when declined.
+ * outgoing rows → onAccepted(challenge, challengedName) when accepted,
+ * onDeclined(challengedName) when declined.
  */
 export function subscribeChallenges(
   uid: string,
   onIncoming: (c: Challenge) => void,
-  onDeclined: (challengedName: string) => void
+  onDeclined: (challengedName: string) => void,
+  onAccepted?: (c: Challenge, challengedName: string) => void
 ) {
   const supabase = createClient();
   return supabase
@@ -301,11 +303,9 @@ export function subscribeChallenges(
         if (c.status === "declined") {
           const names = await fetchNames([c.challenged_id]);
           onDeclined(names[c.challenged_id] ?? "Player");
-          void fireEvent("challenge_declined", {
-            to: c.challenger_id,
-            by: names[c.challenged_id] ?? "Player",
-            challenge: c.id,
-          });
+        } else if (c.status === "accepted") {
+          const names = await fetchNames([c.challenged_id]);
+          onAccepted?.(c, names[c.challenged_id] ?? "Player");
         }
       }
     )

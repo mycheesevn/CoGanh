@@ -179,6 +179,7 @@ export async function notifyPushTrigger(
   payload:
     | { kind: "challenge"; challengeId: string }
     | { kind: "challenge_declined"; challengeId: string }
+    | { kind: "challenge_accepted"; challengeId: string }
     | { kind: "turn"; matchId: string }
     | { kind: "corr"; gameId: string }
     | { kind: "corr_end"; gameId: string }

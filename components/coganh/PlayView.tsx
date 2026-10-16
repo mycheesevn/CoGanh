@@ -63,6 +63,7 @@ export default function PlayView({ lang, level, humanColor, custom, onLogin, onS
   const [hintThinking, setHintThinking] = useState(false);
   const [lastFlips, setLastFlips] = useState<{ ganh: number[]; chet: number[]; move: Move } | null>(null);
   const [xpToast, setXpToast] = useState<number | null>(null);
+  const [recordErr, setRecordErr] = useState<string | null>(null);
   const movesRef = useRef<HTMLDivElement>(null);
   const recordedRef = useRef(false);
   const startedRef = useRef(false);
@@ -100,6 +101,7 @@ export default function PlayView({ lang, level, humanColor, custom, onLogin, onS
     setLastFlips(null);
     setHintMove(null);
     setXpToast(null);
+    setRecordErr(null);
     recordedRef.current = false;
     startedRef.current = true;
     recordCgGameEvent("start", { level });
@@ -149,7 +151,11 @@ export default function PlayView({ lang, level, humanColor, custom, onLogin, onS
         setXpToast(xp);
         refreshStats().catch(() => {});
       })
-      .catch(() => { /* stats are best-effort */ });
+      .catch(() => {
+        // A failed record must say so out loud — the game then does
+        // NOT count toward stats/XP (never swallow with an empty catch).
+        setRecordErr(String(s.recordFailed));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [over, user]);
 
@@ -313,6 +319,9 @@ export default function PlayView({ lang, level, humanColor, custom, onLogin, onS
           </div>
           {over && xpToast !== null && (
             <p className="cg-hint">⭐ +{xpToast} {String(s.xpAwarded)}</p>
+          )}
+          {over && recordErr && (
+            <p className="cg-hint" role="status">{recordErr}</p>
           )}
           {over && !user && (
             <p className="cg-hint">

@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -52,6 +53,10 @@ interface AuthCtx {
   refreshStats: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   displayName: string;
+  /** True when the session ended WITHOUT the user asking (expired /
+   *  refresh failed) — the shell shows a "session expired" notice. */
+  sessionExpired: boolean;
+  dismissSessionExpired: () => void;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -98,6 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [cgStats, setCgStats] = useState<CgStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const explicitSignOutRef = useRef(false);
 
   const loadProfile = useCallback(async (uid: string) => {
     try {
@@ -125,14 +132,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u ? { id: u.id, email: u.email ?? undefined } : null);
         if (u) await loadProfile(u.id);
         const { data: s } = supabase.auth.onAuthStateChange(
-          (_e: string, session: Session | null) => {
+          (event: string, session: Session | null) => {
             const su = session?.user ?? null;
-            setUser(su ? { id: su.id, email: su.email ?? undefined } : null);
-            if (su) loadProfile(su.id);
-            else {
-              setProfile(null);
-              setCgStats(null);
+            if (su) {
+              setSessionExpired(false);
+              setUser({ id: su.id, email: su.email ?? undefined });
+              loadProfile(su.id);
+              return;
             }
+            if (event === "SIGNED_OUT" && !explicitSignOutRef.current) {
+              // A failed token refresh can emit SIGNED_OUT while the
+              // stored session is still valid — verify before demoting
+              // the player to guest mid-game (games used to record
+              // nothing after such a silent downgrade). Only a verified
+              // dead session demotes, and it says so out loud.
+              void supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
+                const vu = data.session?.user ?? null;
+                if (vu) {
+                  setUser({ id: vu.id, email: vu.email ?? undefined });
+                  loadProfile(vu.id);
+                } else {
+                  setUser(null);
+                  setProfile(null);
+                  setCgStats(null);
+                  setSessionExpired(true);
+                }
+              });
+              return;
+            }
+            explicitSignOutRef.current = false;
+            setUser(null);
+            setProfile(null);
+            setCgStats(null);
           }
         );
         sub = s.subscription;
@@ -183,12 +214,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    explicitSignOutRef.current = true;
     try {
       await createClient().auth.signOut();
     } catch {
       /* ignore */
     }
   }, []);
+
+  const dismissSessionExpired = useCallback(() => setSessionExpired(false), []);
 
   const refreshStats = useCallback(async () => {
     if (user) {
@@ -215,6 +249,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshStats,
       refreshProfile,
       displayName: name,
+      sessionExpired,
+      dismissSessionExpired,
     }),
     [
       user,
@@ -228,6 +264,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshStats,
       name,
+      sessionExpired,
+      dismissSessionExpired,
     ]
   );
 

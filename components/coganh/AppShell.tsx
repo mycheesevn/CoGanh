@@ -75,7 +75,8 @@ function Shell() {
   const [hubChallengeMsg, setHubChallengeMsg] = useState<string | null>(null);
   /** SynerWorlds one-tap login hand-off: ?sso=<magic-link token hash>. */
   const [ssoToken, setSsoToken] = useState<string | null>(null);
-  const { user, profile, cgStats, displayName, signOut } = useAuth();
+  const { user, profile, cgStats, displayName, signOut, sessionExpired, dismissSessionExpired } = useAuth();
+  const [expiredMsg, setExpiredMsg] = useState<string | null>(null);
   const s = STR[lang] as Record<string, string | string[]>;
   const userId = user?.id ?? null;
 
@@ -286,6 +287,18 @@ function Shell() {
     const t = setTimeout(() => setHubChallengeMsg(null), 4500);
     return () => clearTimeout(t);
   }, [hubChallengeMsg]);
+
+  /* Session ended on its own (expired / refresh failed): say so. */
+  useEffect(() => {
+    if (!sessionExpired) return;
+    setExpiredMsg(String(s.sessionExpired));
+    const t = setTimeout(() => {
+      setExpiredMsg(null);
+      dismissSessionExpired();
+    }, 7000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionExpired]);
 
   // Hub one-tap login: redeem the one-time token; the auth listener picks
   // the session up from there. Failures are said out loud (toast), never
@@ -569,6 +582,7 @@ function Shell() {
         </div>
       )}
       {challengeToast && <div className="cg-challenge-toast">{challengeToast}</div>}
+      {expiredMsg && <div className="cg-challenge-toast">{expiredMsg}</div>}
       {hubChallengeTarget && (
         <div className="cg-modal-root" onClick={() => !hubChallengeBusy && setHubChallengeTarget(null)}>
           <div className="cg-modal" onClick={(e) => e.stopPropagation()}>

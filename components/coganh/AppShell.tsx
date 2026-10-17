@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import PlayView, { type PlayActions } from "./PlayView";
+import SiteFooter from "./SiteFooter";
 import HowToView from "./HowToView";
 import SetupView, { type SetupGame } from "./SetupView";
 import CvCView from "./CvCView";
@@ -678,7 +679,7 @@ function Shell() {
         {mode === "stats" && <StatsView lang={lang} />}
         {mode === "checkin" && <CheckinView lang={lang} user={user} onLogin={openLogin} />}
         {mode === "howto" && <HowToView lang={lang} />}
-      <footer className="cg-footer">{String(s.footer)}</footer>
+      <SiteFooter lang={lang} className="cg-footer" />
 
       <AuthModal lang={lang} open={authOpen} onClose={() => setAuthOpen(false)} initialMode={authMode} />
       <ProfileModal lang={lang} open={profileOpen} onClose={() => setProfileOpen(false)} />

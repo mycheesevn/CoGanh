@@ -47,9 +47,11 @@ export default function SiteFooter({
       }}
     >
       <div style={{ fontWeight: 600 }}>
-        {en
-          ? "SynerWorlds - One account, every world."
-          : "SynerWorlds - Một tài khoản, mọi bàn cờ."}
+        <HandoffLink href={HUB} newTab style={linkStyle}>
+          {en
+            ? "SynerWorlds - One account, every world."
+            : "SynerWorlds - Một tài khoản, mọi bàn cờ."}
+        </HandoffLink>
       </div>
       <div>
         {GAMES.map((g, i) => (

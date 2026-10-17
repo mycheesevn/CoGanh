@@ -342,7 +342,7 @@ export default function PlayView({ lang, level, humanColor, custom, onLogin, onS
                     headline,
                     subline: `${labels.length} ${lang === "vi" ? "nước đi" : "moves"} · ${lang === "vi" ? "vs Máy cấp" : "vs Computer L"}${level}`,
                     appName: lang === "vi" ? "Cờ Gánh" : "Co Ganh",
-                    appUrl: "coganh-my-cheese-vn.vercel.app",
+                    appUrl: "coganh.synerworlds.com",
                   });
                   await sharePng(blob, headline, headline);
                 }}

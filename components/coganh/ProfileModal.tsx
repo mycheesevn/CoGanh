@@ -110,7 +110,7 @@ export function ProfileModal({ lang, open, onClose }: Props) {
             ? `⭐ ${s?.xp ?? 0} XP · ${s?.wins ?? 0} thắng / ${s?.games_played ?? 0} ván`
             : `⭐ ${s?.xp ?? 0} XP · ${s?.wins ?? 0} wins / ${s?.games_played ?? 0} games`,
         appName: lang === "vi" ? "Cờ Gánh" : "Co Ganh",
-        appUrl: "coganh-my-cheese-vn.vercel.app",
+        appUrl: "coganh.synerworlds.com",
       });
       await sharePng(blob, t("profileTitle", "Profile"), name);
     } catch {

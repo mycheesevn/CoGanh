@@ -70,7 +70,7 @@ export function LeaderboardView({ lang, myUserId }: Props) {
         subline: `${myName} · ⭐${myRating} ${ratingTitle(myRating, lang)} · Lv ${levelForXp(myXp)}`,
         appName:
           lang === "vi" ? "Cờ Gánh" : "Co Ganh",
-        appUrl: "coganh-my-cheese-vn.vercel.app",
+        appUrl: "coganh.synerworlds.com",
       });
       const outcome = await sharePng(blob, title, myName);
       setShareToast(

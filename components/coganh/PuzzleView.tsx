@@ -150,7 +150,7 @@ export function PuzzlePlayer({ lang, pos, turn, solutionLabel, onSolved, panelHe
                 headline: `🧩 ${headline}`,
                 subline: String(s.puzzleSolvePrompt),
                 appName: lang === "vi" ? "Cờ Gánh" : "Co Ganh",
-                appUrl: "coganh-my-cheese-vn.vercel.app",
+                appUrl: "coganh.synerworlds.com",
               });
               await sharePng(blob, headline, headline);
             }}
